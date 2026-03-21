@@ -49,6 +49,14 @@ export default function AdminLogin() {
       });
 
       localStorage.setItem("authToken", data.token);
+      localStorage.setItem(
+        "adminUser",
+        JSON.stringify({
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email,
+        }),
+      );
       toast.success(`Welcome back, ${data.user.name}`);
       router.push("/admin/dashboard");
     } catch (error) {

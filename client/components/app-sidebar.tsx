@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   Activity,
   BarChart3,
@@ -30,13 +32,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { requestJson } from "@/lib/http";
 
 const data = {
-  user: {
-    name: "Partner Admin",
-    email: "admin@partner.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
   navMain: [
     {
       title: "Overview",
@@ -96,7 +94,93 @@ const data = {
   ],
 };
 
+type AdminUser = {
+  id?: string;
+  _id?: string;
+  name: string;
+  email: string;
+};
+
+const ADMIN_USER_STORAGE_KEY = "adminUser";
+const DEFAULT_AVATAR = "/avatars/shadcn.jpg";
+
+const fallbackUser: AdminUser = {
+  id: "",
+  name: "Admin",
+  email: "",
+};
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const router = useRouter();
+  const [currentUser, setCurrentUser] = React.useState<AdminUser>(fallbackUser);
+
+  React.useEffect(() => {
+    const token = window.localStorage.getItem("authToken");
+    if (!token) {
+      setCurrentUser(fallbackUser);
+      return;
+    }
+
+    const cachedUserRaw = window.localStorage.getItem(ADMIN_USER_STORAGE_KEY);
+    if (cachedUserRaw) {
+      try {
+        const cachedUser = JSON.parse(cachedUserRaw) as Partial<AdminUser>;
+        if (cachedUser.name && cachedUser.email) {
+          setCurrentUser({
+            id: cachedUser.id || "",
+            name: cachedUser.name,
+            email: cachedUser.email,
+          });
+        }
+      } catch {
+        window.localStorage.removeItem(ADMIN_USER_STORAGE_KEY);
+      }
+    }
+
+    const loadCurrentUser = async () => {
+      try {
+        const user = await requestJson<AdminUser>("/api/users/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const normalizedUser: AdminUser = {
+          id: user.id || user._id || "",
+          name: user.name,
+          email: user.email,
+        };
+
+        setCurrentUser(normalizedUser);
+        window.localStorage.setItem(
+          ADMIN_USER_STORAGE_KEY,
+          JSON.stringify(normalizedUser),
+        );
+      } catch {
+        // Keep cached/fallback identity for display and avoid hard logout on transient failures.
+      }
+    };
+
+    loadCurrentUser();
+  }, []);
+
+  const openAccount = React.useCallback(() => {
+    router.push("/admin/dashboard/settings");
+  }, [router]);
+
+  const openBilling = React.useCallback(() => {
+    router.push("/admin/dashboard/partners");
+  }, [router]);
+
+  const openNotifications = React.useCallback(() => {
+    router.push("/admin/dashboard/authentication-logs");
+  }, [router]);
+
+  const logout = React.useCallback(() => {
+    window.localStorage.removeItem("authToken");
+    window.localStorage.removeItem(ADMIN_USER_STORAGE_KEY);
+    toast.success("Logged out successfully.");
+    router.push("/admin/login");
+  }, [router]);
+
   return (
     <Sidebar
       collapsible="offcanvas"
@@ -131,7 +215,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <div className="flex items-center justify-end px-2 pb-1">
           <ThemeToggle />
         </div>
-        <NavUser user={data.user} />
+        <NavUser
+          user={{
+            name: currentUser.name || fallbackUser.name,
+            email: currentUser.email || "No email",
+            avatar: DEFAULT_AVATAR,
+          }}
+          onAccountClick={openAccount}
+          onBillingClick={openBilling}
+          onNotificationsClick={openNotifications}
+          onLogoutClick={logout}
+        />
       </SidebarFooter>
     </Sidebar>
   );
