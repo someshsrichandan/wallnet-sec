@@ -1,16 +1,38 @@
 import { NextResponse } from "next/server";
-import { listUsers } from "@/lib/demo-bank-store";
+import {
+  getAdminOwnerFromProxyHeaders,
+  getAdminPartnerIdsFromProxyHeaders,
+  unauthorizedAdminProxy,
+} from "@/lib/admin-proxy-auth";
+import {
+  listLegacyUsersByPartnerIds,
+  listUsersByOwner,
+  listUsersWithoutOwner,
+} from "@/lib/demo-bank-store";
 
 /**
  * GET /api/demo-bank/agent/list-users
  * Returns all bank users (safe fields only) for admin user management table.
  * CORS headers are handled by middleware.ts
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const users = await listUsers();
+    const ownerUserId = getAdminOwnerFromProxyHeaders(request);
+    const partnerIds = getAdminPartnerIdsFromProxyHeaders(request);
+    if (!ownerUserId) {
+      return unauthorizedAdminProxy();
+    }
 
-    const safe = users
+    const users = await listUsersByOwner(ownerUserId);
+    const legacyUsers =
+      partnerIds.length > 0
+        ? await listLegacyUsersByPartnerIds(partnerIds)
+        : await listUsersWithoutOwner();
+    const merged = [...users, ...legacyUsers].filter(
+      (user, index, all) => all.findIndex((candidate) => candidate.id === user.id) === index,
+    );
+
+    const safe = merged
       .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
       .map((u) => ({
         id: u.id,

@@ -302,6 +302,8 @@ const testCredentials = asyncHandler(async (req, res) => {
     ok: true,
     message: "API credentials are valid",
     key_id: partner?.keyId || "env-based",
+    ownerUserId: partner?.ownerUserId || "",
+    keyDocId: partner?.keyDocId || "",
     partnerId: partner?.partnerId || "unknown",
     mode: partner?.mode || "unknown",
     authMethod: partner?.authMethod || "unknown",

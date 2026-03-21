@@ -228,10 +228,12 @@ export default function DashboardPage() {
 
   // Fetch bank users from demo-bank
   const fetchBankUsers = useCallback(async () => {
+    if (!token) return;
     setUsersLoading(true);
     try {
-      const demoBankBase = process.env.NEXT_PUBLIC_DEMO_BANK_URL || "http://localhost:3002";
-      const res = await fetch(`${demoBankBase}/api/demo-bank/agent/list-users`);
+      const res = await fetch("/api/proxy/demo-bank/list-users", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json() as { ok?: boolean; users?: BankUser[] };
       if (data.ok && data.users) setBankUsers(data.users);
     } catch {
@@ -239,7 +241,7 @@ export default function DashboardPage() {
     } finally {
       setUsersLoading(false);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     fetchData();
@@ -796,10 +798,12 @@ export default function DashboardPage() {
                           setRecoveryResult(null);
                           setCopied(false);
                           try {
-                            const demoBankBase = process.env.NEXT_PUBLIC_DEMO_BANK_URL || "http://localhost:3002";
-                            const res = await fetch(`${demoBankBase}/api/demo-bank/agent/admin-reset`, {
+                            const res = await fetch("/api/proxy/demo-bank/admin-reset", {
                               method: "POST",
-                              headers: { "content-type": "application/json" },
+                              headers: {
+                                "content-type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
                               body: JSON.stringify({ query: recoveryQuery.trim(), triggeredBy: "Admin Console" }),
                             });
                             const data = await res.json() as {
@@ -1029,10 +1033,12 @@ export default function DashboardPage() {
                                           onClick={async () => {
                                             setUserResetStates(prev => ({ ...prev, [u.id]: { sending: true, result: "", copied: false } }));
                                             try {
-                                              const demoBankBase = process.env.NEXT_PUBLIC_DEMO_BANK_URL || "http://localhost:3002";
-                                              const res = await fetch(`${demoBankBase}/api/demo-bank/agent/admin-reset`, {
+                                              const res = await fetch("/api/proxy/demo-bank/admin-reset", {
                                                 method: "POST",
-                                                headers: { "content-type": "application/json" },
+                                                headers: {
+                                                  "content-type": "application/json",
+                                                  Authorization: `Bearer ${token}`,
+                                                },
                                                 body: JSON.stringify({ query: u.partnerUserId, triggeredBy: "Admin Console — Users Tab" }),
                                               });
                                               const data = await res.json() as { ok?: boolean; message?: string; enrollUrl?: string; emailSent?: boolean };

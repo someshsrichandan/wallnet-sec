@@ -2,7 +2,9 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 
 import { createUser, findUserByEmail } from "@/lib/demo-bank-store";
+import { demoBankConfig } from "@/lib/config";
 import { hashPassword } from "@/lib/password";
+import { resolvePartnerOwner } from "@/lib/partner-owner";
 import { parseRegisterPayload } from "@/lib/validators";
 import { initVisualEnroll, VisualApiError } from "@/lib/visual-api";
 
@@ -25,12 +27,15 @@ export async function POST(request: Request) {
     const passwordHash = await hashPassword(parsed.password);
     const accountNumber = generateAccountNumber();
     const phone = String((body as Record<string, unknown>).phone || "").trim();
+    const owner = await resolvePartnerOwner();
 
     const user = await createUser({
       fullName: parsed.fullName,
       email: parsed.email,
       passwordHash,
       partnerUserId,
+      ownerUserId: owner.ownerUserId,
+      partnerId: owner.partnerId || demoBankConfig.partnerId,
       phone,
       accountNumber,
     });

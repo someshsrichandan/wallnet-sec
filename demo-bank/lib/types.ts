@@ -14,6 +14,8 @@ export type VisualProfile = {
 
 export type DemoBankUser = {
   id: string;
+  ownerUserId: string;
+  partnerId: string;
   partnerUserId: string;
   fullName: string;
   email: string;

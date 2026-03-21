@@ -21,6 +21,8 @@ const visualProfileSchema = new Schema(
 const userSchema = new Schema(
   {
     id:             { type: String, required: true, unique: true, index: true },
+    ownerUserId:    { type: String, required: false, default: "", index: true },
+    partnerId:      { type: String, required: false, default: "", index: true },
     partnerUserId:  { type: String, required: true, unique: true, index: true },
     fullName:       { type: String, required: true },
     email:          { type: String, required: true, unique: true, index: true },
@@ -35,8 +37,34 @@ const userSchema = new Schema(
   { collection: "users", versionKey: false },
 );
 
-function getModel() {
-  return models["DemoBankUser"] ?? model("DemoBankUser", userSchema);
+function getModel(): any {
+  const existing = models["DemoBankUser"] as any;
+  if (existing) {
+    const ownerPath = existing.schema.path("ownerUserId") as
+      | { isRequired?: boolean | (() => boolean) }
+      | undefined;
+    const partnerPath = existing.schema.path("partnerId") as
+      | { isRequired?: boolean | (() => boolean) }
+      | undefined;
+
+    const ownerIsRequired =
+      typeof ownerPath?.isRequired === "function"
+        ? ownerPath.isRequired()
+        : Boolean(ownerPath?.isRequired);
+    const partnerIsRequired =
+      typeof partnerPath?.isRequired === "function"
+        ? partnerPath.isRequired()
+        : Boolean(partnerPath?.isRequired);
+
+    if (ownerIsRequired || partnerIsRequired) {
+      delete models["DemoBankUser"];
+      return model("DemoBankUser", userSchema) as any;
+    }
+
+    return existing;
+  }
+
+  return model("DemoBankUser", userSchema) as any;
 }
 
 function clean(doc: Record<string, unknown>): DemoBankUser {
@@ -82,6 +110,8 @@ export const createUser = async (input: {
   fullName: string;
   passwordHash: string;
   partnerUserId: string;
+  ownerUserId: string;
+  partnerId: string;
   phone?: string;
   accountNumber?: string;
   visualProfile?: VisualProfile;
@@ -91,6 +121,8 @@ export const createUser = async (input: {
   const id = crypto.randomUUID();
   const created = await getModel().create({
     id,
+    ownerUserId: input.ownerUserId,
+    partnerId: input.partnerId,
     partnerUserId: input.partnerUserId,
     fullName:      input.fullName,
     email:         input.email.toLowerCase().trim(),
@@ -126,6 +158,175 @@ export const findUserByAccountNumber = async (accountNumber: string): Promise<De
   await connectDB();
   const doc = await getModel()
     .findOne({ accountNumber: accountNumber.trim() })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const listUsersByOwner = async (ownerUserId: string): Promise<DemoBankUser[]> => {
+  await connectDB();
+  const docs = await getModel()
+    .find({ ownerUserId: String(ownerUserId || "").trim() })
+    .lean() as Record<string, unknown>[];
+  return docs.map(clean);
+};
+
+export const listUsersWithoutOwner = async (): Promise<DemoBankUser[]> => {
+  await connectDB();
+  const docs = await getModel()
+    .find({
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: "" }],
+    })
+    .lean() as Record<string, unknown>[];
+  return docs.map(clean);
+};
+
+export const listLegacyUsersByPartnerIds = async (
+  partnerIds: string[],
+): Promise<DemoBankUser[]> => {
+  const ids = partnerIds.map((id) => String(id || "").trim().toLowerCase()).filter(Boolean);
+  if (ids.length === 0) return [];
+
+  await connectDB();
+  const docs = await getModel()
+    .find({
+      partnerId: { $in: ids },
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: "" }],
+    })
+    .lean() as Record<string, unknown>[];
+  return docs.map(clean);
+};
+
+export const findUserByAccountNumberForOwner = async (
+  accountNumber: string,
+  ownerUserId: string,
+): Promise<DemoBankUser | null> => {
+  await connectDB();
+  const doc = await getModel()
+    .findOne({
+      accountNumber: accountNumber.trim(),
+      ownerUserId: String(ownerUserId || "").trim(),
+    })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const findUserByPartnerUserIdForOwner = async (
+  partnerUserId: string,
+  ownerUserId: string,
+): Promise<DemoBankUser | null> => {
+  await connectDB();
+  const doc = await getModel()
+    .findOne({
+      partnerUserId: partnerUserId.trim(),
+      ownerUserId: String(ownerUserId || "").trim(),
+    })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const findUserByEmailForOwner = async (
+  email: string,
+  ownerUserId: string,
+): Promise<DemoBankUser | null> => {
+  await connectDB();
+  const doc = await getModel()
+    .findOne({
+      email: email.toLowerCase().trim(),
+      ownerUserId: String(ownerUserId || "").trim(),
+    })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const findUserByAccountNumberWithoutOwner = async (
+  accountNumber: string,
+): Promise<DemoBankUser | null> => {
+  await connectDB();
+  const doc = await getModel()
+    .findOne({
+      accountNumber: accountNumber.trim(),
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: "" }],
+    })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const findUserByPartnerUserIdWithoutOwner = async (
+  partnerUserId: string,
+): Promise<DemoBankUser | null> => {
+  await connectDB();
+  const doc = await getModel()
+    .findOne({
+      partnerUserId: partnerUserId.trim(),
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: "" }],
+    })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const findUserByEmailWithoutOwner = async (
+  email: string,
+): Promise<DemoBankUser | null> => {
+  await connectDB();
+  const doc = await getModel()
+    .findOne({
+      email: email.toLowerCase().trim(),
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: "" }],
+    })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const findUserByAccountNumberForPartnerIdsWithoutOwner = async (
+  accountNumber: string,
+  partnerIds: string[],
+): Promise<DemoBankUser | null> => {
+  const ids = partnerIds.map((id) => String(id || "").trim().toLowerCase()).filter(Boolean);
+  if (ids.length === 0) return null;
+
+  await connectDB();
+  const doc = await getModel()
+    .findOne({
+      accountNumber: accountNumber.trim(),
+      partnerId: { $in: ids },
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: "" }],
+    })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const findUserByPartnerUserIdForPartnerIdsWithoutOwner = async (
+  partnerUserId: string,
+  partnerIds: string[],
+): Promise<DemoBankUser | null> => {
+  const ids = partnerIds.map((id) => String(id || "").trim().toLowerCase()).filter(Boolean);
+  if (ids.length === 0) return null;
+
+  await connectDB();
+  const doc = await getModel()
+    .findOne({
+      partnerUserId: partnerUserId.trim(),
+      partnerId: { $in: ids },
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: "" }],
+    })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const findUserByEmailForPartnerIdsWithoutOwner = async (
+  email: string,
+  partnerIds: string[],
+): Promise<DemoBankUser | null> => {
+  const ids = partnerIds.map((id) => String(id || "").trim().toLowerCase()).filter(Boolean);
+  if (ids.length === 0) return null;
+
+  await connectDB();
+  const doc = await getModel()
+    .findOne({
+      email: email.toLowerCase().trim(),
+      partnerId: { $in: ids },
+      $or: [{ ownerUserId: { $exists: false } }, { ownerUserId: "" }],
+    })
     .lean() as Record<string, unknown> | null;
   return doc ? clean(doc) : null;
 };
