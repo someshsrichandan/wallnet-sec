@@ -69,6 +69,161 @@ For a complete setup across all demo apps, read the full guide:
 - Verify: user submits challenge response.
 - Callback + Consume Result: partner validates signed outcome server-side.
 
+## Detailed Technical Flow
+
+This section maps directly to current backend implementation in `backend/src/routes/visualPassword.routes.js` and `backend/src/controllers/visualPassword.controller.js`.
+
+### 1. Enrollment (Profile Creation)
+
+Enrollment binds a visual secret to a partner identity pair:
+
+- `partnerId`
+- `userId` (partner user ID)
+
+What is stored by `POST /api/visual-password/enroll`:
+
+- selected secret catalog items (for example vegetables)
+- secret letters used as answer anchor positions
+- formula configuration (`SALT_ADD` or `POSITION_SUM`)
+- profile metadata like catalog type, alphabet mode, and challenge options
+
+Implementation details:
+
+- the system validates and normalizes enrollment input before persisting it.
+- init-auth looks up only by `(partnerId, userId, active: true)`.
+
+### 2. Init Auth (Partner -> WallNet)
+
+Partner server starts auth using:
+
+- `POST /api/visual-password/v1/init-auth`
+
+The backend checks:
+
+- partner credentials using middleware `partnerApiKey`:
+  - `Authorization: Basic base64(key_id:key_secret)`
+  - or legacy `x-api-key`
+- callback URL policy (`https` requirement in production and allowlist check when allowlist is configured)
+- existence of an active visual credential for the `(partnerId, userId)`
+
+Then it creates a `VisualSession` with:
+
+- `sessionToken`
+- attempt limits and expiry (`maxAttempts`, `expiresAt`)
+- partner state/callback context
+- generated challenge fields (`vegetables`, `alphabetGrid`, expected digits, formula metadata)
+
+Response includes `verifyPath: /verify/:sessionToken`.
+
+### 3. Challenge Retrieval (Browser -> WallNet)
+
+Challenge endpoint:
+
+- `GET /api/visual-password/v1/challenge/:sessionToken`
+
+Backend behavior:
+
+Backend behavior includes:
+
+- validates session token and expiry
+- binds/validates request fingerprint on first load
+- regenerates challenge board
+- resolves image URLs for catalog items
+- generates keypad layout
+- generates one-time `csrfNonce` and stores it in session
+
+Returned payload includes session info, `csrfNonce`, board data, keypad layout, and stage fields.
+
+### 4. Verify (Browser -> WallNet)
+
+Verify endpoint:
+
+- `POST /api/visual-password/v1/verify`
+
+Current verify checks include:
+
+1. session status checks (already PASS, LOCKED, expired)
+2. request fingerprint match with original challenge request
+3. CSRF nonce exact match and one-time invalidation
+4. normalized input shape and full-grid requirement
+5. expected answer check at the user secret-letter coordinates
+
+In verify, backend also computes risk signals:
+
+- behavioral analysis score
+- geo-velocity checks
+- device trust scoring
+- honeypot detection
+- optional AI fraud assessment when AI shadow mode is enabled in config/context
+
+If PASS:
+
+- session status becomes `PASS`
+- signed verification token (`verificationSignature`) is minted
+- known fingerprint can be added to credential
+
+If FAIL:
+
+- attempts increment
+- session status becomes `FAIL` or `LOCKED` depending on attempts
+- honeypot and failure events are logged
+
+### 5. Callback + Signature Consumption (Partner Backend)
+
+Consume-result endpoint:
+
+- `POST /api/visual-password/v1/partner/consume-result`
+
+Consume-result performs strict checks:
+
+- verifies signature cryptographically
+- verifies session exists and is in `PASS`
+- verifies signature matches session-stored verification signature
+- marks session consumed (`consumedAt`) idempotently
+
+`consume-result` verifies token signature, checks session status/signature match, and sets `consumedAt` once.
+
+## Session State Lifecycle
+
+Implemented session statuses include:
+
+1. `PENDING` (initial)
+2. `PASS` (successful verify)
+3. `FAIL` (failed verify)
+4. `LOCKED` (exceeded max attempts)
+5. `EXPIRED` (expiry handling)
+
+`consumedAt` is a timestamp set after successful consume-result.
+
+Operationally important timestamps:
+
+- `expiresAt`
+- `verifiedAt`
+- `consumedAt`
+- `lastAttemptAt`
+
+## Implemented Guards (Current Code)
+
+- Partner auth middleware for partner endpoints (`Basic` key_id:key_secret or `x-api-key`)
+- Callback URL checks in init-auth and init-enroll
+- Request fingerprint check between challenge and verify
+- One-time CSRF nonce check in verify
+- Session expiry and attempt lock handling
+- Signed verification signature validation in consume-result
+
+## Auditability And Observability
+
+The backend logs event actions, including:
+
+- challenge load
+- verify pass/fail
+- session lock
+- honeypot detections
+- consume-result events
+- AI fraud assessment events when AI shadow flow is active
+
+This gives teams a way to reason about both auth outcomes and attack signals over time.
+
 ## Local Docker Option (Backend + Client + Mongo)
 
 From repo root:
