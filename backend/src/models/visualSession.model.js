@@ -1,4 +1,10 @@
 const { Schema, model } = require("mongoose");
+const {
+  decryptJson,
+  decryptString,
+  encryptJson,
+  encryptString,
+} = require("../utils/fieldEncryption");
 
 const visualSessionSchema = new Schema(
   {
@@ -15,8 +21,18 @@ const visualSessionSchema = new Schema(
       index: true,
     },
     ownerUserId: { type: String, required: true, trim: true, index: true },
-    callbackUrl: { type: String, default: "", trim: true },
-    partnerState: { type: String, default: "", trim: true },
+    callbackUrl: {
+      type: Schema.Types.Mixed,
+      default: "",
+      set: (value) => encryptString(String(value || "").trim()),
+      get: (value) => decryptString(value),
+    },
+    partnerState: {
+      type: Schema.Types.Mixed,
+      default: "",
+      set: (value) => encryptString(String(value || "").trim()),
+      get: (value) => decryptString(value),
+    },
     vegetables: {
       type: [
         {
@@ -32,19 +48,43 @@ const visualSessionSchema = new Schema(
       default: [],
     },
     secretLetters: {
-      type: [String],
+      type: Schema.Types.Mixed,
       required: true,
-      validate: {
-        validator: (value) => Array.isArray(value) && value.length === 2,
-        message: "secretLetters must contain exactly 2 items",
+      set: (value) => encryptJson(value),
+      get: (value) => {
+        const decoded = decryptJson(value, []);
+        return Array.isArray(decoded) ? decoded : [];
       },
     },
-    selectedSecretVegetable: { type: String, required: true, trim: true },
+    selectedSecretVegetable: {
+      type: Schema.Types.Mixed,
+      required: true,
+      set: (value) => encryptString(value),
+      get: (value) => decryptString(value),
+    },
     fruitSelectionVerifiedAt: { type: Date, default: null },
-    selectedSecretNumber: { type: Number, required: true },
+    selectedSecretNumber: {
+      type: Schema.Types.Mixed,
+      required: true,
+      set: (value) => encryptJson(value),
+      get: (value) => {
+        const decoded = decryptJson(value, null);
+        return typeof decoded === "number" ? decoded : Number(decoded || 0);
+      },
+    },
     saltValue: { type: Number, required: true, default: 5 },
-    expectedDigitOne: { type: String, required: true },
-    expectedDigitTwo: { type: String, required: true },
+    expectedDigitOne: {
+      type: Schema.Types.Mixed,
+      required: true,
+      set: (value) => encryptString(value),
+      get: (value) => decryptString(value),
+    },
+    expectedDigitTwo: {
+      type: Schema.Types.Mixed,
+      required: true,
+      set: (value) => encryptString(value),
+      get: (value) => decryptString(value),
+    },
     formulaMode: {
       type: String,
       enum: ["SALT_ADD", "POSITION_SUM", "PAIR_SUM"],
@@ -66,13 +106,22 @@ const visualSessionSchema = new Schema(
     attemptCount: { type: Number, default: 0 },
     honeypotDetected: { type: Boolean, default: false },
     csrfNonce: { type: String, default: "" },
-    verificationSignature: { type: String, default: "" },
+    verificationSignature: {
+      type: Schema.Types.Mixed,
+      default: "",
+      set: (value) => encryptString(String(value || "")),
+      get: (value) => decryptString(value),
+    },
     consumedAt: { type: Date, default: null },
     verifiedAt: { type: Date, default: null },
     lastAttemptAt: { type: Date, default: null },
     expiresAt: { type: Date, required: true },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true },
+  },
 );
 
 visualSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

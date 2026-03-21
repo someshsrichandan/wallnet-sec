@@ -27,10 +27,10 @@ const listKeys = asyncHandler(async (req, res) => {
   const masked = keys.map((key) => ({
     ...key,
     apiKey:
-      key.apiKey ?
-        `${"•".repeat(Math.max(0, key.apiKey.length - 8))}${key.apiKey.slice(-8)}`
+      key.apiKeyPreview ?
+        `${"•".repeat(24)}${key.apiKeyPreview}`
       : "",
-    apiKeyPreview: key.apiKey ? key.apiKey.slice(-8) : "",
+    apiKeyPreview: key.apiKeyPreview || "",
   }));
 
   res.json({ keys: masked });
@@ -67,15 +67,16 @@ const generateKey = asyncHandler(async (req, res) => {
 
   const apiKey = PartnerKey.generateApiKey(mode);
 
-  const partnerKey = await PartnerKey.create({
+  const partnerKey = new PartnerKey({
     partnerId,
     ownerUserId,
     label,
-    apiKey,
     mode,
     webhookUrl,
     callbackAllowlist,
   });
+  partnerKey.setApiKey(apiKey);
+  await partnerKey.save();
 
   await logEvent({
     action: "API_KEY_GENERATED",
@@ -90,7 +91,7 @@ const generateKey = asyncHandler(async (req, res) => {
     id: partnerKey._id,
     partnerId: partnerKey.partnerId,
     label: partnerKey.label,
-    apiKey: partnerKey.apiKey,
+    apiKey,
     mode: partnerKey.mode,
     webhookUrl: partnerKey.webhookUrl,
     callbackAllowlist: partnerKey.callbackAllowlist,
@@ -117,8 +118,9 @@ const rotateKey = asyncHandler(async (req, res) => {
     throw new HttpError(403, "You can only rotate your own keys");
   }
 
-  const oldKeyPreview = existing.apiKey.slice(-8);
-  existing.apiKey = PartnerKey.generateApiKey(existing.mode);
+  const oldPreview = existing.apiKeyPreview || "";
+  const newApiKey = PartnerKey.generateApiKey(existing.mode);
+  existing.setApiKey(newApiKey);
   await existing.save();
 
   await logEvent({
@@ -128,8 +130,8 @@ const rotateKey = asyncHandler(async (req, res) => {
     req,
     metadata: {
       keyId,
-      oldKeyPreview,
-      newKeyPreview: existing.apiKey.slice(-8),
+      oldKeyPreview: oldPreview,
+      newKeyPreview: existing.apiKeyPreview,
       mode: existing.mode,
     },
   });
@@ -137,7 +139,7 @@ const rotateKey = asyncHandler(async (req, res) => {
   res.json({
     id: existing._id,
     partnerId: existing.partnerId,
-    apiKey: existing.apiKey,
+    apiKey: newApiKey,
     mode: existing.mode,
     message:
       "Key rotated. Save the new API key — it will not be shown again in full.",
@@ -252,6 +254,7 @@ const getKeyUsage = asyncHandler(async (req, res) => {
   res.json({
     id: existing._id,
     partnerId: existing.partnerId,
+    apiKeyPreview: existing.apiKeyPreview || "",
     mode: existing.mode,
     usageCount: existing.usageCount,
     lastUsedAt: existing.lastUsedAt,

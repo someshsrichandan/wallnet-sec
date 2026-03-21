@@ -158,6 +158,9 @@ const env = {
     allowDevFallback: !isProduction,
   }),
   tokenSecret: process.env.TOKEN_SECRET || DEFAULT_TOKEN_SECRET,
+  visualDataEncryptionKey: String(
+    process.env.VISUAL_DATA_ENCRYPTION_KEY || "",
+  ).trim(),
   aiEnabled: toBoolean(process.env.AI_ENABLED, false),
   aiProvider: String(process.env.AI_PROVIDER || DEFAULT_AI_PROVIDER)
     .trim()
@@ -208,6 +211,12 @@ const validateEnv = () => {
     if (hasApiKey(env.partnerApiKeys, DEFAULT_PARTNER_API_KEY)) {
       errors.push(
         "PARTNER_API_KEYS contains insecure default key. Replace dev-partner-key-change-me in production",
+      );
+    }
+
+    if (!env.visualDataEncryptionKey || env.visualDataEncryptionKey.length < 32) {
+      errors.push(
+        "VISUAL_DATA_ENCRYPTION_KEY must be configured with at least 32 characters in production",
       );
     }
 

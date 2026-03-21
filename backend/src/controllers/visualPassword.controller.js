@@ -5,6 +5,7 @@ const VisualCredential = require("../models/visualCredential.model");
 const VisualEnrollSession = require("../models/visualEnrollSession.model");
 const VisualSession = require("../models/visualSession.model");
 const PartnerKey = require("../models/partnerKey.model");
+const { decryptJson } = require("../utils/fieldEncryption");
 const asyncHandler = require("../utils/asyncHandler");
 const HttpError = require("../utils/httpError");
 const { signToken, verifyToken } = require("../utils/token");
@@ -51,6 +52,44 @@ const normalizeIdentity = (value) =>
   String(value || "")
     .trim()
     .toLowerCase();
+
+const ensureArray = (value) => (Array.isArray(value) ? value : []);
+
+const resolveCredentialSecrets = (credential) => {
+  const rawVegetables = credential?.secretVegetables;
+  const rawLetters = credential?.secretLetters;
+
+  // Decrypt both fields. If decryptJson fails (wrong key, corrupt ciphertext),
+  // it returns the fallback value (empty array).
+  const secretVegetables = ensureArray(
+    typeof rawVegetables === "string" ? decryptJson(rawVegetables, []) : rawVegetables,
+  );
+  const secretLetters = ensureArray(
+    typeof rawLetters === "string" ? decryptJson(rawLetters, []) : rawLetters,
+  );
+
+  const vegetablesOk = secretVegetables.length === 4;
+  const lettersOk = secretLetters.length === 2;
+
+  if (!vegetablesOk || !lettersOk) {
+    // Log server-side to help diagnose key-rotation issues without exposing secrets.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[visual-password] resolveCredentialSecrets: decryption failed for credential ` +
+      `partnerId="${credential?.partnerId}" userId="${credential?.userId}". ` +
+      `vegetables=${secretVegetables.length}/4, letters=${secretLetters.length}/2. ` +
+      `This usually indicates a VISUAL_DATA_ENCRYPTION_KEY rotation. ` +
+      `The partner login/start route will trigger re-enrollment automatically.`,
+    );
+
+    throw new HttpError(
+      422,
+      "Stored visual secret data could not be decrypted. Please re-enroll visual password.",
+    );
+  }
+
+  return { secretVegetables, secretLetters };
+};
 const LEGACY_TRANSFORMATION_RULE = Object.freeze({
   ADD_5: { formulaMode: FORMULA_MODE.SALT_ADD, saltValue: 5 },
   ADD_3: { formulaMode: FORMULA_MODE.SALT_ADD, saltValue: 3 },
@@ -309,7 +348,7 @@ const getEnrollmentStatus = asyncHandler(async (req, res) => {
   const credential = await VisualCredential.findOne({
     partnerId,
     userId,
-  }).lean();
+  });
 
   if (credential) {
     ensureEnrollmentOwnership(credential, authUserId);
@@ -381,10 +420,13 @@ const initAuth = asyncHandler(async (req, res) => {
 
   const resolvedCatalogType = credential.catalogType || CATALOG_TYPE.VEGETABLE;
   const challengeConfig = resolveCredentialChallengeConfig(credential);
+  const { secretVegetables, secretLetters } = resolveCredentialSecrets(
+    credential,
+  );
 
   const challenge = createChallengePayload({
-    secretVegetables: credential.secretVegetables,
-    secretLetters: credential.secretLetters,
+    secretVegetables,
+    secretLetters,
     saltValue: challengeConfig.saltValue,
     gridSize: env.visualAlphabetGridSize,
     formulaMode: challengeConfig.formulaMode,
@@ -416,7 +458,7 @@ const initAuth = asyncHandler(async (req, res) => {
     partnerState: state,
     vegetables: challenge.vegetables,
     alphabetGrid: challenge.alphabetGrid,
-    secretLetters: credential.secretLetters,
+    secretLetters,
     selectedSecretVegetable: challenge.selectedSecretVegetable,
     fruitSelectionVerifiedAt: null,
     selectedSecretNumber: challenge.selectedSecretNumber,
@@ -524,10 +566,13 @@ const getChallenge = asyncHandler(async (req, res) => {
 
   const resolvedCatalogType = credential.catalogType || CATALOG_TYPE.VEGETABLE;
   const challengeConfig = resolveCredentialChallengeConfig(credential);
+  const { secretVegetables, secretLetters } = resolveCredentialSecrets(
+    credential,
+  );
 
   const freshChallenge = createChallengePayload({
-    secretVegetables: credential.secretVegetables,
-    secretLetters: credential.secretLetters,
+    secretVegetables,
+    secretLetters,
     saltValue: challengeConfig.saltValue,
     gridSize: env.visualAlphabetGridSize,
     formulaMode: challengeConfig.formulaMode,
@@ -1084,10 +1129,6 @@ const getEnrollSession = asyncHandler(async (req, res) => {
 
   if (session.expiresAt.getTime() < Date.now()) {
     throw new HttpError(410, "Enrollment session has expired");
-  }
-
-  if (session.status === "COMPLETED") {
-    throw new HttpError(409, "Enrollment session already completed");
   }
 
   res.json({

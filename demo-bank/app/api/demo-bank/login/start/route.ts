@@ -37,15 +37,27 @@ export async function POST(request: Request) {
     const state = randomUUID();
     const loginId = randomUUID();
 
-    // Try to start visual auth; if user has no profile yet, start enrollment instead
+    // Try to start visual auth; handle missing or stale profiles gracefully.
     let initResult: Awaited<ReturnType<typeof initVisualAuth>> | null = null;
     let enrollUrl: string | null = null;
+    let enrollReason: "not_enrolled" | "stale_credential" | null = null;
 
     try {
       initResult = await initVisualAuth({ partnerUserId: user.partnerUserId, state });
     } catch (authErr) {
-      if (authErr instanceof VisualApiError && authErr.statusCode === 404) {
-        // No visual profile — redirect to enrollment
+      if (authErr instanceof VisualApiError) {
+        if (authErr.statusCode === 404) {
+          // User has never enrolled — redirect to fresh enrollment.
+          enrollReason = "not_enrolled";
+        } else if (authErr.statusCode === 422) {
+          // Visual credential exists but cannot be decrypted (key rotation or
+          // corrupted data). Initiate re-enrollment to overwrite the stale record.
+          enrollReason = "stale_credential";
+        } else {
+          throw authErr;
+        }
+
+        // Initiate enrollment (overwrites the stale credential on submit).
         const enroll = await initVisualEnroll({ partnerUserId: user.partnerUserId, state });
         enrollUrl = enroll.enrollUrl;
       } else {
@@ -54,11 +66,17 @@ export async function POST(request: Request) {
     }
 
     if (enrollUrl) {
+      const message =
+        enrollReason === "stale_credential"
+          ? "Your visual password needs to be reset. Please re-enroll now."
+          : "Visual password not set up yet. Redirecting to setup…";
+
       return NextResponse.json(
         {
           needsEnroll: true,
           enrollUrl,
-          message: "Visual password not set up yet. Redirecting to setup…",
+          enrollReason,
+          message,
         },
         { status: 200 }
       );

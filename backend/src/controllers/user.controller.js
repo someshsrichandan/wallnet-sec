@@ -5,6 +5,10 @@ const HttpError = require('../utils/httpError');
 const { hashPassword, verifyPassword } = require('../utils/password');
 const { signToken } = require('../utils/token');
 const {
+  hashEmailForLookup,
+  normalizeEmail,
+} = require('../utils/fieldEncryption');
+const {
   assertEmail,
   assertRequiredString,
   parsePagination,
@@ -33,22 +37,30 @@ const list = asyncHandler(async (req, res) => {
 const create = asyncHandler(async (req, res) => {
   const name = assertRequiredString('name', req.body.name, { min: 2, max: 100 });
   const email = assertEmail(req.body.email);
+  const normalizedEmail = normalizeEmail(email);
+  const emailHash = hashEmailForLookup(normalizedEmail);
   const password = assertRequiredString('password', req.body.password, { min: 8, max: 128 });
-  const existing = await User.findOne({ email });
+  const existing = await User.findOne({
+    $or: [{ emailHash }, { email: normalizedEmail }],
+  });
   if (existing) {
     throw new HttpError(409, 'User with this email already exists');
   }
 
   const passwordHash = await hashPassword(password);
-  const user = await User.create({ name, email, passwordHash });
+  const user = await User.create({ name, email: normalizedEmail, passwordHash });
   res.status(201).json({ id: user.id, name: user.name, email: user.email });
 });
 
 const login = asyncHandler(async (req, res) => {
   const email = assertEmail(req.body.email);
+  const normalizedEmail = normalizeEmail(email);
+  const emailHash = hashEmailForLookup(normalizedEmail);
   const password = assertRequiredString('password', req.body.password, { min: 8, max: 128 });
 
-  const user = await User.findOne({ email });
+  const user =
+    (await User.findOne({ emailHash })) ||
+    (await User.findOne({ email: normalizedEmail }));
   if (!user) {
     throw new HttpError(401, 'Invalid email or password');
   }
