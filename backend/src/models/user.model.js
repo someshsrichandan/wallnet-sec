@@ -1,7 +1,24 @@
-const { Schema, model } = require('mongoose');
+const { Schema, model } = require("mongoose");
+const { randomUUID } = require("crypto");
 
 const userSchema = new Schema(
   {
+    userId: {
+      type: String,
+      unique: true,
+      trim: true,
+      default: () => randomUUID(),
+    },
+    partnerId: {
+      type: String,
+      trim: true,
+      default: "local",
+    },
+    externalUserId: {
+      type: String,
+      trim: true,
+      default: () => randomUUID(),
+    },
     name: { type: String, required: true, trim: true },
     email: {
       type: String,
@@ -12,7 +29,7 @@ const userSchema = new Schema(
     },
     passwordHash: { type: String, required: true },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-module.exports = model('User', userSchema);
+module.exports = model("User", userSchema);

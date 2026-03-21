@@ -2,11 +2,16 @@ const DEFAULT_VISUAL_SESSION_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_VISUAL_MAX_ATTEMPTS = 3;
 const DEFAULT_VISUAL_SALT = 5;
 const DEFAULT_VISUAL_GRID_SIZE = 10;
-const DEFAULT_TOKEN_SECRET = 'change-this-token-secret-in-production';
-const DEFAULT_PARTNER_API_KEY = 'dev-partner-key-change-me';
+const DEFAULT_AI_TIMEOUT_MS = 1500;
+const DEFAULT_AI_MAX_RETRIES = 1;
+const DEFAULT_AI_PROVIDER = "openai";
+const DEFAULT_AI_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_AI_MODEL = "gpt-4o-mini";
+const DEFAULT_TOKEN_SECRET = "change-this-token-secret-in-production";
+const DEFAULT_PARTNER_API_KEY = "dev-partner-key-change-me";
 
 const toPositiveInteger = (value, fallback) => {
-  const parsed = Number.parseInt(String(value ?? ''), 10);
+  const parsed = Number.parseInt(String(value ?? ""), 10);
 
   if (Number.isNaN(parsed) || parsed <= 0) {
     return fallback;
@@ -15,13 +20,29 @@ const toPositiveInteger = (value, fallback) => {
   return parsed;
 };
 
+const toBoolean = (value, fallback = false) => {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
+};
+
 const toOrigins = (value) => {
   if (!value) {
-    return ['*'];
+    return ["*"];
   }
 
   return String(value)
-    .split(',')
+    .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
 };
@@ -32,21 +53,21 @@ const toList = (value) => {
   }
 
   return String(value)
-    .split(',')
+    .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
 };
 
 const toTrustProxy = (value) => {
-  if (value === undefined || value === null || String(value).trim() === '') {
+  if (value === undefined || value === null || String(value).trim() === "") {
     return 1;
   }
 
   const normalized = String(value).trim().toLowerCase();
-  if (normalized === 'false' || normalized === '0') {
+  if (normalized === "false" || normalized === "0") {
     return false;
   }
-  if (normalized === 'true') {
+  if (normalized === "true") {
     return true;
   }
 
@@ -64,11 +85,12 @@ const parsePartnerApiKeys = (value, options = {}) => {
   const byPartner = new Map();
 
   for (const item of items) {
-    const [partnerIdRaw, apiKeyRaw] = item.includes(':') ? item.split(':', 2) : ['*', item];
-    const partnerId = String(partnerIdRaw || '*')
+    const [partnerIdRaw, apiKeyRaw] =
+      item.includes(":") ? item.split(":", 2) : ["*", item];
+    const partnerId = String(partnerIdRaw || "*")
       .trim()
       .toLowerCase();
-    const apiKey = String(apiKeyRaw || '').trim();
+    const apiKey = String(apiKeyRaw || "").trim();
 
     if (!apiKey) {
       continue;
@@ -80,7 +102,7 @@ const parsePartnerApiKeys = (value, options = {}) => {
   }
 
   if (!byPartner.size && allowDevFallback) {
-    byPartner.set('*', new Set([DEFAULT_PARTNER_API_KEY]));
+    byPartner.set("*", new Set([DEFAULT_PARTNER_API_KEY]));
   }
 
   return byPartner;
@@ -96,79 +118,148 @@ const hasApiKey = (partnerApiKeys, value) => {
 };
 
 const toHttpsOnlyOrigins = (origins = []) =>
-  origins.filter((origin) => String(origin || '').toLowerCase().startsWith('https://'));
+  origins.filter((origin) =>
+    String(origin || "")
+      .toLowerCase()
+      .startsWith("https://"),
+  );
 
-const nodeEnv = process.env.NODE_ENV || 'development';
-const isProduction = nodeEnv === 'production';
+const nodeEnv = process.env.NODE_ENV || "development";
+const isProduction = nodeEnv === "production";
 
 const env = {
   nodeEnv,
   isProduction,
   port: toPositiveInteger(process.env.PORT, 3000),
-  mongodbUri: process.env.MONGODB_URI || '',
+  mongodbUri: process.env.MONGODB_URI || "",
   corsOrigins: toOrigins(process.env.CORS_ORIGIN),
   trustProxy: toTrustProxy(process.env.TRUST_PROXY),
-  jsonLimit: process.env.JSON_LIMIT || '10mb',
+  jsonLimit: process.env.JSON_LIMIT || "10mb",
   visualSessionTtlMs: toPositiveInteger(
     process.env.VISUAL_SESSION_TTL_MS,
-    DEFAULT_VISUAL_SESSION_TTL_MS
+    DEFAULT_VISUAL_SESSION_TTL_MS,
   ),
   visualMaxAttempts: toPositiveInteger(
     process.env.VISUAL_MAX_ATTEMPTS,
-    DEFAULT_VISUAL_MAX_ATTEMPTS
+    DEFAULT_VISUAL_MAX_ATTEMPTS,
   ),
-  visualSaltValue: toPositiveInteger(process.env.VISUAL_SALT_VALUE, DEFAULT_VISUAL_SALT),
+  visualSaltValue: toPositiveInteger(
+    process.env.VISUAL_SALT_VALUE,
+    DEFAULT_VISUAL_SALT,
+  ),
   visualAlphabetGridSize: toPositiveInteger(
     process.env.VISUAL_ALPHABET_GRID_SIZE,
-    DEFAULT_VISUAL_GRID_SIZE
+    DEFAULT_VISUAL_GRID_SIZE,
   ),
-  partnerCallbackAllowlist: toList(process.env.PARTNER_CALLBACK_ALLOWLIST).map((origin) =>
-    origin.toLowerCase()
+  partnerCallbackAllowlist: toList(process.env.PARTNER_CALLBACK_ALLOWLIST).map(
+    (origin) => origin.toLowerCase(),
   ),
   partnerApiKeys: parsePartnerApiKeys(process.env.PARTNER_API_KEYS, {
     allowDevFallback: !isProduction,
   }),
   tokenSecret: process.env.TOKEN_SECRET || DEFAULT_TOKEN_SECRET,
+  aiEnabled: toBoolean(process.env.AI_ENABLED, false),
+  aiProvider: String(process.env.AI_PROVIDER || DEFAULT_AI_PROVIDER)
+    .trim()
+    .toLowerCase(),
+  aiApiKey: String(process.env.AI_API_KEY || "").trim(),
+  aiBaseUrl: String(process.env.AI_BASE_URL || DEFAULT_AI_BASE_URL).trim(),
+  aiModel: String(process.env.AI_MODEL || DEFAULT_AI_MODEL).trim(),
+  aiTimeoutMs: toPositiveInteger(
+    process.env.AI_TIMEOUT_MS,
+    DEFAULT_AI_TIMEOUT_MS,
+  ),
+  aiMaxRetries: toPositiveInteger(
+    process.env.AI_MAX_RETRIES,
+    DEFAULT_AI_MAX_RETRIES,
+  ),
+  aiFraudShadowMode: toBoolean(process.env.AI_FRAUD_SHADOW_MODE, true),
+  aiFraudEnforcementMode: toBoolean(
+    process.env.AI_FRAUD_ENFORCEMENT_MODE,
+    false,
+  ),
+  aiThreatSummaryEnabled: toBoolean(
+    process.env.AI_THREAT_SUMMARY_ENABLED,
+    false,
+  ),
+  aiPartnerAssistantEnabled: toBoolean(
+    process.env.AI_PARTNER_ASSISTANT_ENABLED,
+    false,
+  ),
 };
 
 const validateEnv = () => {
   const errors = [];
 
   if (env.isProduction) {
-    if (env.tokenSecret === DEFAULT_TOKEN_SECRET || env.tokenSecret.length < 32) {
+    if (
+      env.tokenSecret === DEFAULT_TOKEN_SECRET ||
+      env.tokenSecret.length < 32
+    ) {
       errors.push(
-        'TOKEN_SECRET must be set to a random value of at least 32 characters in production'
+        "TOKEN_SECRET must be set to a random value of at least 32 characters in production",
       );
     }
 
     if (!env.partnerApiKeys.size) {
-      errors.push('PARTNER_API_KEYS must be configured in production');
+      errors.push("PARTNER_API_KEYS must be configured in production");
     }
 
     if (hasApiKey(env.partnerApiKeys, DEFAULT_PARTNER_API_KEY)) {
       errors.push(
-        'PARTNER_API_KEYS contains insecure default key. Replace dev-partner-key-change-me in production'
+        "PARTNER_API_KEYS contains insecure default key. Replace dev-partner-key-change-me in production",
       );
     }
 
-    if (env.corsOrigins.includes('*')) {
+    if (env.corsOrigins.includes("*")) {
       errors.push('CORS_ORIGIN cannot include "*" in production');
     }
 
     if (!env.partnerCallbackAllowlist.length) {
-      errors.push('PARTNER_CALLBACK_ALLOWLIST must be configured in production');
+      errors.push(
+        "PARTNER_CALLBACK_ALLOWLIST must be configured in production",
+      );
     }
 
     if (
       env.partnerCallbackAllowlist.length &&
-      toHttpsOnlyOrigins(env.partnerCallbackAllowlist).length !== env.partnerCallbackAllowlist.length
+      toHttpsOnlyOrigins(env.partnerCallbackAllowlist).length !==
+        env.partnerCallbackAllowlist.length
     ) {
-      errors.push('PARTNER_CALLBACK_ALLOWLIST must contain only https origins in production');
+      errors.push(
+        "PARTNER_CALLBACK_ALLOWLIST must contain only https origins in production",
+      );
+    }
+  }
+
+  if (env.aiEnabled) {
+    if (!env.aiApiKey) {
+      errors.push("AI_API_KEY must be configured when AI_ENABLED=true");
+    }
+
+    if (!env.aiModel) {
+      errors.push("AI_MODEL must be configured when AI_ENABLED=true");
+    }
+
+    if (!["openai", "gemini"].includes(env.aiProvider)) {
+      errors.push("AI_PROVIDER currently supports only: openai, gemini");
+    }
+
+    if (
+      env.aiProvider === "openai" &&
+      !env.aiBaseUrl.startsWith("http://") &&
+      !env.aiBaseUrl.startsWith("https://")
+    ) {
+      errors.push(
+        "AI_BASE_URL must be a valid http/https URL for AI_PROVIDER=openai",
+      );
     }
   }
 
   if (errors.length) {
-    throw new Error(`Invalid environment configuration:\n- ${errors.join('\n- ')}`);
+    throw new Error(
+      `Invalid environment configuration:\n- ${errors.join("\n- ")}`,
+    );
   }
 };
 

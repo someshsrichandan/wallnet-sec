@@ -1,6 +1,7 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
+import Link from "next/link";
 import {
   Activity,
   BarChart3,
@@ -11,14 +12,14 @@ import {
   Shield,
   Search,
   HelpCircle,
-  FileText
-} from "lucide-react"
+  FileText,
+} from "lucide-react";
 
-import { NavDocuments } from "@/components/nav-documents"
-import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
-import { NavUser } from "@/components/nav-user"
-import { ThemeToggle } from "@/components/theme-toggle"
+import { NavDocuments } from "@/components/nav-documents";
+import { NavMain } from "@/components/nav-main";
+import { NavSecondary } from "@/components/nav-secondary";
+import { NavUser } from "@/components/nav-user";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Sidebar,
   SidebarContent,
@@ -27,7 +28,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
 const data = {
   user: {
@@ -48,12 +49,12 @@ const data = {
     },
     {
       title: "User Analytics",
-      url: "/admin/dashboard#analytics",
+      url: "/admin/dashboard/analytics",
       icon: BarChart3,
     },
     {
       title: "Authentication Logs",
-      url: "/admin/dashboard#audit",
+      url: "/admin/dashboard/authentication-logs",
       icon: Users,
     },
   ],
@@ -61,37 +62,41 @@ const data = {
   navSecondary: [
     {
       title: "Settings",
-      url: "/admin",
+      url: "/admin/dashboard/settings",
       icon: Settings,
     },
     {
       title: "Support",
-      url: "/contact",
+      url: "/admin/dashboard/support",
       icon: HelpCircle,
     },
     {
       title: "Search Logs",
-      url: "/admin/dashboard#audit",
+      url: "/admin/dashboard/search-logs",
       icon: Search,
     },
   ],
   documents: [
     {
       name: "API Documentation",
-      url: "/docs",
+      url: "/admin/dashboard/docs",
       icon: Database,
     },
     {
       name: "Audit Reports",
-      url: "/admin/dashboard#audit",
+      url: "/admin/dashboard/audit-reports",
       icon: FileText,
     },
   ],
-}
+};
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
-    <Sidebar collapsible="offcanvas" {...props} className="bg-sidebar border-r border-sidebar-border text-sidebar-foreground">
+    <Sidebar
+      collapsible="offcanvas"
+      {...props}
+      className="bg-sidebar border-r border-sidebar-border text-sidebar-foreground"
+    >
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -99,12 +104,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               asChild
               className="data-[slot=sidebar-menu-button]:p-1.5!"
             >
-              <a href="/admin/dashboard" className="flex items-center gap-2">
+              <Link href="/admin/dashboard" className="flex items-center gap-2">
                 <div className="flex h-6 w-6 items-center justify-center rounded bg-slate-900 text-white shadow-sm">
                   <Shield className="h-4 w-4" />
                 </div>
-                <span className="text-base font-bold text-sidebar-foreground">Partner Console</span>
-              </a>
+                <span className="text-base font-bold text-sidebar-foreground">
+                  Partner Console
+                </span>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -121,5 +128,5 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavUser user={data.user} />
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }

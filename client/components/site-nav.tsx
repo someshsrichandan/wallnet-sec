@@ -12,7 +12,6 @@ const navLinks = [
   { href: "/how-it-works", label: "How It Works" },
   { href: "/developers", label: "Developers" },
   { href: "/docs", label: "API Docs" },
-  { href: "/partner-live", label: "Live Demo" },
   { href: "/contact", label: "Contact" },
   { href: "/admin", label: "Admin" },
 ];
@@ -48,9 +47,9 @@ export function SiteNav() {
         <div className="hidden items-center gap-8 sm:flex">
           {navLinks.map(({ href, label }) => {
             const isActive =
-              href === "/"
-                ? pathname === "/"
-                : pathname === href || pathname.startsWith(href + "/");
+              href === "/" ?
+                pathname === "/"
+              : pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
@@ -79,7 +78,9 @@ export function SiteNav() {
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-label={menuOpen ? "Close menu" : "Open menu"}
           >
-            {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            {menuOpen ?
+              <X className="h-4 w-4" />
+            : <Menu className="h-4 w-4" />}
           </button>
         </div>
       </nav>
@@ -89,7 +90,9 @@ export function SiteNav() {
         <div className="border-t border-slate-200/80 bg-white px-4 pb-4 pt-2 dark:border-white/5 dark:bg-[#020205] sm:hidden">
           {navLinks.map(({ href, label }) => {
             const isActive =
-              href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+              href === "/" ?
+                pathname === "/"
+              : pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}

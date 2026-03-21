@@ -3,7 +3,20 @@
 import Link from "next/link";
 import { useEffect, useState, type SyntheticEvent } from "react";
 import { toast } from "sonner";
-import { LayoutDashboard, Key, Shield, User, Lock, Grid3X3, ArrowRight, CheckCircle2 } from "lucide-react";
+import {
+  LayoutDashboard,
+  Key,
+  Shield,
+  Lock,
+  ArrowRight,
+  CheckCircle2,
+  ClipboardCopy,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+  Rocket,
+  LogOut,
+} from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -15,7 +28,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { HttpError, requestJson } from "@/lib/http";
 
@@ -56,6 +68,29 @@ type CatalogResponse = {
 type CatalogType = "VEGETABLE" | "CRICKETER" | "BOLLYWOOD";
 type FormulaMode = "SALT_ADD" | "POSITION_SUM" | "PAIR_SUM";
 type AlphabetMode = "SEQUENTIAL" | "RANDOM";
+
+type PartnerKeyInfo = {
+  _id: string;
+  partnerId: string;
+  label: string;
+  apiKey: string;
+  apiKeyPreview: string;
+  mode: string;
+  active: boolean;
+  usageCount: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
+type NewKeyResponse = {
+  id: string;
+  partnerId: string;
+  label: string;
+  apiKey: string;
+  mode: string;
+  createdAt: string;
+  message: string;
+};
 type PositionCell =
   | 1
   | 2
@@ -191,11 +226,55 @@ export default function AdminPage() {
   const [formulaMode, setFormulaMode] = useState<FormulaMode>("PAIR_SUM");
   const [alphabetMode, setAlphabetMode] = useState<AlphabetMode>("SEQUENTIAL");
   const [positionPair, setPositionPair] = useState<PositionCell[]>([1]);
+  const [keysLoading, setKeysLoading] = useState(false);
+  const [keys, setKeys] = useState<PartnerKeyInfo[]>([]);
+  const [newKeyPartnerId, setNewKeyPartnerId] = useState("hdfc_bank");
+  const [newKeyLabel, setNewKeyLabel] = useState("Primary Live Key");
+  const [newKeyMode, setNewKeyMode] = useState<"test" | "live">("live");
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [revealedKey, setRevealedKey] = useState("");
 
   useEffect(() => {
     const stored = localStorage.getItem("authToken");
     if (stored) setToken(stored);
   }, []);
+
+  const loadPartnerKeys = async (authToken: string) => {
+    if (!authToken) {
+      return;
+    }
+
+    try {
+      setKeysLoading(true);
+      const data = await requestJson<{ keys: PartnerKeyInfo[] }>(
+        "/api/partners/keys",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        },
+      );
+      setKeys(data.keys || []);
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 401) {
+        localStorage.removeItem("authToken");
+        setToken("");
+        setLoggedInUserId("");
+        toast.error("Session expired. Login again.");
+      } else {
+        toast.error("Unable to load API keys.");
+      }
+    } finally {
+      setKeysLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      void loadPartnerKeys(token);
+    }
+  }, [token]);
 
   useEffect(() => {
     const loadCatalog = async () => {
@@ -241,12 +320,121 @@ export default function AdminPage() {
       setToken(data.token);
       localStorage.setItem("authToken", data.token);
       setLoggedInUserId(data.user.id);
+      setName(data.user.name || name);
+      setEmail(data.user.email || email);
       setPartnerUserId(
         (current) => current || `customer-${data.user.id.slice(0, 8)}`,
       );
+      void loadPartnerKeys(data.token);
       toast.success("Login successful.");
     } catch {
       toast.error("Login failed.");
+    }
+  };
+
+  const logoutUser = () => {
+    localStorage.removeItem("authToken");
+    setToken("");
+    setLoggedInUserId("");
+    setKeys([]);
+    setRevealedKey("");
+    toast.success("Logged out.");
+  };
+
+  const createApiKey = async () => {
+    if (!token) {
+      toast.error("Please login first.");
+      return;
+    }
+
+    if (!newKeyPartnerId.trim() || !newKeyLabel.trim()) {
+      toast.error("Partner ID and key label are required.");
+      return;
+    }
+
+    try {
+      setCreatingKey(true);
+      const data = await requestJson<NewKeyResponse>("/api/partners/keys", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          partnerId: newKeyPartnerId.trim(),
+          label: newKeyLabel.trim(),
+          mode: newKeyMode,
+        }),
+      });
+      setRevealedKey(data.apiKey);
+      toast.success("API key generated. Copy it now.");
+      await loadPartnerKeys(token);
+    } catch (error) {
+      toast.error(
+        error instanceof HttpError ?
+          error.message
+        : "Failed to create API key.",
+      );
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
+  const rotateApiKey = async (keyId: string) => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const data = await requestJson<{ apiKey: string }>(
+        `/api/partners/keys/${keyId}/rotate`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      setRevealedKey(data.apiKey);
+      toast.success("API key rotated. Copy the new key.");
+      await loadPartnerKeys(token);
+    } catch (error) {
+      toast.error(
+        error instanceof HttpError ?
+          error.message
+        : "Failed to rotate API key.",
+      );
+    }
+  };
+
+  const revokeApiKey = async (keyId: string) => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      await requestJson(`/api/partners/keys/${keyId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      toast.success("API key revoked.");
+      await loadPartnerKeys(token);
+    } catch (error) {
+      toast.error(
+        error instanceof HttpError ?
+          error.message
+        : "Failed to revoke API key.",
+      );
+    }
+  };
+
+  const copyText = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Copied to clipboard.");
+    } catch {
+      toast.error("Copy failed.");
     }
   };
 
@@ -360,18 +548,23 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-950 dark:bg-slate-950 dark:text-slate-50 relative overflow-x-hidden">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[30rem] bg-[radial-gradient(circle_at_50%_0%,rgba(120,119,198,0.1),transparent_50%)] dark:opacity-20" />
-      
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-120 bg-[radial-gradient(circle_at_50%_0%,rgba(120,119,198,0.1),transparent_50%)] dark:opacity-20" />
+
       <main className="relative mx-auto flex w-full max-w-7xl flex-col gap-10 px-6 py-12 sm:py-20">
-        
         {/* Header Section */}
         <section className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <Badge variant="outline" className="rounded-full border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-400">
+              <Badge
+                variant="outline"
+                className="rounded-full border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-400"
+              >
                 ADMIN CONSOLE
               </Badge>
-              <Badge variant="outline" className="rounded-full border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
+              <Badge
+                variant="outline"
+                className="rounded-full border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400"
+              >
                 USER ENROLLMENT
               </Badge>
             </div>
@@ -379,364 +572,280 @@ export default function AdminPage() {
               Visual Profile Setup
             </h1>
             <p className="max-w-2xl text-lg text-slate-600 dark:text-slate-400">
-              Configure security parameters, enroll users, and manage visual secrets for the cognitive airgap system.
+              Configure security parameters, enroll users, and manage visual
+              secrets for the cognitive airgap system.
             </p>
           </div>
 
-          {token && (
+          {token ?
             <div className="flex flex-wrap gap-3">
-              <Button asChild size="sm" variant="outline" className="h-10 rounded-full border-slate-200 bg-white shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="h-10 rounded-full border-slate-200 bg-white shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+              >
                 <Link href="/admin/dashboard" className="gap-2">
                   <LayoutDashboard className="h-4 w-4" />
                   Security Dashboard
                 </Link>
               </Button>
-              <Button asChild size="sm" variant="outline" className="h-10 rounded-full border-slate-200 bg-white shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="h-10 rounded-full border-slate-200 bg-white shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+              >
                 <Link href="/admin/dashboard/partners" className="gap-2">
                   <Key className="h-4 w-4" />
                   API Keys
                 </Link>
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={logoutUser}
+                className="h-10 rounded-full border-rose-200 bg-white text-rose-700 shadow-sm hover:bg-rose-50 dark:border-rose-900 dark:bg-slate-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </Button>
             </div>
-          )}
+          : <div className="flex flex-wrap gap-3">
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="h-10 rounded-full border-slate-200 bg-white shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+              >
+                <Link href="/admin/signup">Create Admin Account</Link>
+              </Button>
+              <Button
+                asChild
+                size="sm"
+                className="h-10 rounded-full bg-slate-900 px-5 text-white hover:bg-slate-800"
+              >
+                <Link href="/admin/login">Login to SaaS Console</Link>
+              </Button>
+            </div>
+          }
         </section>
 
-        <div className="grid gap-8 items-start lg:grid-cols-[1fr_2fr]">
+        <section className="grid gap-6 lg:grid-cols-3">
+          <Card className="border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">SaaS Workflow</CardTitle>
+              <CardDescription>
+                Use this sequence like a real partner onboarding flow.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+              <p>1. Signup/Login with admin account</p>
+              <p>2. Create API keys (test/live)</p>
+              <p>3. Enroll visual profiles</p>
+              <p>4. Test integration with Demo Bank/Ecommerce apps</p>
+            </CardContent>
+          </Card>
 
-          {/* Left Column: Auth (Sticky) */}
-          <section className="space-y-6 lg:sticky lg:top-6">
-            <Card className="border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                   <User className="h-5 w-5 text-indigo-500" />
-                   Admin Access
-                </CardTitle>
-                <CardDescription>
-                  Authenticate to modify visual profiles.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-slate-500">Name</label>
-                  <Input
-                    className="bg-slate-50 dark:bg-slate-950"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="Admin Name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-slate-500">Email</label>
-                  <Input
-                    className="bg-slate-50 dark:bg-slate-950"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="admin@example.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-slate-500">Password</label>
-                  <Input
-                    className="bg-slate-50 dark:bg-slate-950"
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="••••••••"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <Button variant="outline" onClick={registerUser} className="w-full">
-                    Register
-                  </Button>
-                  <Button onClick={loginUser} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
-                    Login
-                  </Button>
-                </div>
-
-                {loggedInUserId && (
-                  <div className="mt-4 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-300">
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                    <div className="text-xs font-medium break-all">
-                      Logged in as {loggedInUserId}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-
-          {/* Right Column: Configuration */}
-          <section className="space-y-6">
-            <Card className="border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                   <Lock className="h-5 w-5 text-rose-500" />
-                   Secret Configuration
-                </CardTitle>
-                <CardDescription>
-                  Define the cognitive secrets for the user. Select exactly 4 items and 2 letters.
-                </CardDescription>
-              </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Catalog Type</label>
-              <select
-                className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"
-                value={catalogType}
-                onChange={(event) => {
-                  setCatalogType(event.target.value as CatalogType);
-                  setSelectedVegetables([]);
-                  setPositionPair([1]);
-                }}
+          <Card className="border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Demo Launchers</CardTitle>
+              <CardDescription>Test your integration quickly.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button
+                asChild
+                variant="outline"
+                className="w-full justify-start"
               >
-                <option value="VEGETABLE">Vegetables</option>
-                <option value="CRICKETER">Cricketers</option>
-                <option value="BOLLYWOOD">Bollywood Actors/Actresses</option>
-              </select>
-            </div>
+                <Link href={`http://localhost:3002`}>
+                  <Rocket className="mr-2 h-4 w-4" />
+                  Open Demo Bank
+                </Link>
+              </Button>
+              <Button
+                asChild
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <Link href={`http://localhost:3003`}>
+                  <Rocket className="mr-2 h-4 w-4" />
+                  Open Demo Ecommerce
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
 
-            <div className="grid gap-3">
-              <label className="text-sm font-medium">Partner ID</label>
-              <Input
-                value={partnerId}
-                onChange={(event) => setPartnerId(event.target.value)}
-              />
-            </div>
-            <div className="grid gap-3">
-              <label className="text-sm font-medium">Partner User ID</label>
-              <Input
-                value={partnerUserId}
-                onChange={(event) => setPartnerUserId(event.target.value)}
-                placeholder="customer-bank-001"
-              />
-            </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                     <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                       Select 4 Secret Items
-                     </p>
-                     <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                        selectedVegetables.length === 4 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
-                     }`}>
-                       {selectedVegetables.length} / 4 Selected
-                     </span>
-                  </div>
-                  
-                  {catalogItems.length === 0 && (
-                    <div className="rounded-lg bg-rose-50 p-4 text-center text-sm text-rose-600 dark:bg-rose-900/20">
-                      Catalog is empty. Ensure backend is running.
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-                    {catalogItems.map((item) => {
-                      const selected = selectedVegetables.includes(item.name);
-                      return (
-                        <button
-                          key={item.name}
-                          type="button"
-                          onClick={() => toggleVegetable(item.name)}
-                          className={`group relative overflow-hidden rounded-xl border text-left transition-all ${
-                            selected 
-                              ? "border-emerald-500 bg-emerald-50/50 ring-2 ring-emerald-500 ring-offset-2 dark:bg-emerald-900/20 dark:ring-offset-slate-900" 
-                              : "border-slate-200 bg-white hover:border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:hover:border-slate-600"
-                          }`}
-                        >
-                          <div className="aspect-[4/5] w-full overflow-hidden bg-slate-100 dark:bg-slate-700">
-                             <img
-                               src={item.imageUrl}
-                               alt={item.name}
-                               className={`h-full w-full object-cover transition-transform duration-500 ${selected ? "scale-110" : "group-hover:scale-110"}`}
-                               onError={(event) => onItemImageError(event, item.name)}
-                               draggable={false}
-                             />
-                          </div>
-                          
-                          <div className={`absolute bottom-0 inset-x-0 p-2 text-xs font-semibold backdrop-blur-md ${
-                             selected ? "bg-emerald-500/90 text-white" : "bg-white/90 text-slate-700 dark:bg-slate-900/90 dark:text-slate-200"
-                          }`}>
-                             {item.name}
-                          </div>
-                          
-                          {selected && (
-                             <div className="absolute top-2 right-2 rounded-full bg-emerald-500 p-0.5 text-white shadow-sm">
-                                <CheckCircle2 className="h-4 w-4" />
-                             </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                value={letterOne}
-                onChange={(event) =>
-                  setLetterOne(event.target.value.toUpperCase())
-                }
-                placeholder="First letter"
-                maxLength={1}
-              />
-              <Input
-                value={letterTwo}
-                onChange={(event) =>
-                  setLetterTwo(event.target.value.toUpperCase())
-                }
-                placeholder="Second letter"
-                maxLength={1}
-              />
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="grid gap-2 text-sm font-medium">
-                Formula Mode
-                <select
-                  className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"
-                  value={formulaMode}
-                  onChange={(event) =>
-                    setFormulaMode(event.target.value as FormulaMode)
-                  }
-                >
-                  <option value="SALT_ADD">Salt Add</option>
-                  <option value="POSITION_SUM">Position Sum</option>
-                  <option value="PAIR_SUM">Pair Sum</option>
-                </select>
-              </label>
-
-              <label className="grid gap-2 text-sm font-medium">
-                Alphabet Mode
-                <select
-                  className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"
-                  value={alphabetMode}
-                  onChange={(event) =>
-                    setAlphabetMode(event.target.value as AlphabetMode)
-                  }
-                >
-                  <option value="SEQUENTIAL">Sequential</option>
-                  <option value="RANDOM">Random</option>
-                </select>
-              </label>
-
-              {formulaMode === "SALT_ADD" ?
-                <label className="grid gap-2 text-sm font-medium">
-                  Salt Value
+          <Card className="border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">API Keys (Quick)</CardTitle>
+              <CardDescription>
+                Create and rotate keys directly from this page.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!token ?
+                <Alert>
+                  <AlertTitle>Login Required</AlertTitle>
+                  <AlertDescription>
+                    Sign in to create and manage API keys.
+                  </AlertDescription>
+                </Alert>
+              : <>
+                  <Input
+                    value={newKeyPartnerId}
+                    onChange={(event) => setNewKeyPartnerId(event.target.value)}
+                    placeholder="Partner ID"
+                  />
+                  <Input
+                    value={newKeyLabel}
+                    onChange={(event) => setNewKeyLabel(event.target.value)}
+                    placeholder="Key Label"
+                  />
                   <select
                     className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"
-                    value={String(saltValue)}
+                    value={newKeyMode}
                     onChange={(event) =>
-                      setSaltValue(
-                        Number(event.target.value) as 3 | 4 | 5 | 6 | 7,
-                      )
+                      setNewKeyMode(event.target.value as "test" | "live")
                     }
                   >
-                    {[3, 4, 5, 6, 7].map((value) => (
-                      <option key={value} value={value}>
-                        {value}
-                      </option>
-                    ))}
+                    <option value="test">Test Mode</option>
+                    <option value="live">Live Mode</option>
                   </select>
-                </label>
-              : <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-700/60 dark:border-slate-600 dark:text-slate-400">
-                  Salt value is hidden for this formula mode.
-                </div>
-              }
-            </div>
-
-            {formulaMode === "POSITION_SUM" ?
-              <div className="space-y-3 rounded-lg border border-indigo-300/50 bg-indigo-50 p-4 dark:bg-indigo-900/20 dark:border-indigo-700/50">
-                <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-300">
-                  Position Grid Setup (3 rows x 6 columns)
-                </p>
-                <p className="text-xs text-indigo-800 dark:text-indigo-400">
-                  Select exactly 1 fixed board cell. Login key = your secret
-                  vegetable number + this cell number.
-                </p>
-                <div className="grid grid-cols-6 gap-2">
-                  {Array.from({ length: POSITION_GRID_TOTAL }, (_, index) => {
-                    const cell = (index + 1) as PositionCell;
-                    const selected = positionPair.includes(cell);
-                    return (
-                      <button
-                        key={cell}
-                        type="button"
-                        onClick={() => togglePositionCell(cell)}
-                        className={`rounded-md border px-2 py-2 text-xs font-semibold ${
-                          selected ?
-                            "border-indigo-600 bg-indigo-600 text-white"
-                          : "border-indigo-300 bg-white text-indigo-900 hover:border-indigo-500 dark:bg-slate-700 dark:border-indigo-700 dark:text-indigo-100"
-                        }`}
-                      >
-                        {getPositionCellLabel(cell)}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-indigo-900 dark:text-indigo-300">
-                  <p>
-                    Selected:{" "}
-                    {positionPair.length ?
-                      getPositionCellLabel(positionPair[0])
-                    : "None"}
-                  </p>
                   <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setPositionPair([])}
+                    className="w-full"
+                    onClick={createApiKey}
+                    disabled={creatingKey}
                   >
-                    Clear Positions
+                    {creatingKey ?
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    : <>
+                        <Key className="mr-2 h-4 w-4" />
+                        Create API Key
+                      </>
+                    }
                   </Button>
-                </div>
-              </div>
-            : null}
+                  {revealedKey ?
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                      <div className="mb-2 font-semibold">
+                        Copy this key now (shown once)
+                      </div>
+                      <div className="break-all font-mono">{revealedKey}</div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => copyText(revealedKey)}
+                      >
+                        <ClipboardCopy className="mr-2 h-3.5 w-3.5" />
+                        Copy Key
+                      </Button>
+                    </div>
+                  : null}
+                </>
+              }
+            </CardContent>
+          </Card>
+        </section>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border border-emerald-300/50 bg-emerald-50 p-3 dark:bg-emerald-900/20 dark:border-emerald-700/50">
-                <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-300">
-                  Formula: {FORMULA_MODE_EXAMPLES[formulaMode].title}
-                </p>
-                <p className="mt-1 text-sm text-emerald-800 dark:text-emerald-400">
-                  {FORMULA_MODE_EXAMPLES[formulaMode].example}
-                </p>
-                <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-500">
-                  {FORMULA_MODE_EXAMPLES[formulaMode].note}
-                </p>
-              </div>
-              <div className="rounded-lg border border-blue-300/50 bg-blue-50 p-3 dark:bg-blue-900/20 dark:border-blue-700/50">
-                <p className="text-sm font-semibold text-blue-900 dark:text-blue-300">
-                  Alphabet: {ALPHABET_MODE_EXAMPLES[alphabetMode].title}
-                </p>
-                <p className="mt-1 text-sm text-blue-800 dark:text-blue-400">
-                  {ALPHABET_MODE_EXAMPLES[alphabetMode].example}
-                </p>
-                <p className="mt-1 text-xs text-blue-700 dark:text-blue-500">
-                  {ALPHABET_MODE_EXAMPLES[alphabetMode].note}
-                </p>
-              </div>
-            </div>
-
-                <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                  <Button size="lg" onClick={enrollVisualProfile} className="bg-slate-900 text-white hover:bg-slate-800 shadow-xl shadow-indigo-500/10 dark:bg-white dark:text-slate-900">
-                    <Shield className="mr-2 h-4 w-4" />
-                    Save Visual Profile
+        {token ?
+          <section>
+            <Card className="border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between gap-2 text-lg">
+                  <span>Recent API Keys</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadPartnerKeys(token)}
+                  >
+                    <RefreshCw
+                      className={`mr-2 h-4 w-4 ${keysLoading ? "animate-spin" : ""}`}
+                    />
+                    Refresh
                   </Button>
-                  <Button asChild size="lg" variant="outline" className="border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
-                    <Link
-                      href={`/partner-live?partnerId=${encodeURIComponent(
-                        partnerId.trim(),
-                      )}&userId=${encodeURIComponent(partnerUserId.trim())}`}
+                </CardTitle>
+                <CardDescription>
+                  Real SaaS style key management overview.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {keys.length === 0 ?
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    No keys yet. Create your first key above.
+                  </p>
+                : keys.slice(0, 4).map((item) => (
+                    <div
+                      key={item._id}
+                      className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700 md:flex-row md:items-center md:justify-between"
                     >
-                      Open Partner Flow
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
-                </div>
+                      <div>
+                        <div className="font-semibold text-slate-900 dark:text-slate-100">
+                          {item.label}
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
+                          {item.partnerId} • {item.mode.toUpperCase()} •{" "}
+                          {item.apiKey}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => rotateApiKey(item._id)}
+                        >
+                          <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                          Rotate
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => revokeApiKey(item._id)}
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          Revoke
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                }
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/admin/dashboard/partners">
+                    Open Full API Key Manager
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           </section>
-        </div>
+        : null}
+
+        <section>
+          <Card className="border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader>
+              <CardTitle className="text-xl">
+                Secret Configuration Moved
+              </CardTitle>
+              <CardDescription>
+                Secret profile setup is handled through enrollment and
+                verification routes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button
+                asChild
+                className="bg-slate-900 text-white hover:bg-slate-800"
+              >
+                <Link href="/admin/dashboard">
+                  Open Security Dashboard
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </section>
       </main>
     </div>
   );
