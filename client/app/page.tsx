@@ -1,328 +1,432 @@
 "use client";
 
+import React, { useRef, useEffect } from "react";
 import Link from "next/link";
+import * as THREE from "three";
 import {
   ArrowRight,
   Code2,
   Globe2,
-  LayoutDashboard,
   Lock,
-  MessagesSquare,
   ShieldCheck,
   Zap,
-  CheckCircle2,
   Server,
-  Smartphone,
-  Fingerprint,
   Eye,
-  ShieldAlert,
-  Users
+  ChevronRight,
+  Sparkles,
+  Cpu,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 
-// --- Data ---
+// ─── Theme-aware Particle Shield ──────────────────────────────────────────────
+const ParticleShield = () => {
+  const mountRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    const isDark = document.documentElement.classList.contains("dark");
+    const W = mount.clientWidth, H = mount.clientHeight;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
+    camera.position.z = 15;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    mount.appendChild(renderer.domElement);
+
+    // ── Particles ──
+    const COUNT = 32000;
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(COUNT * 3);
+    const col = new Float32Array(COUNT * 3);
+    
+    const palette = isDark
+      ? [
+          new THREE.Color("#818cf8"),
+          new THREE.Color("#6366f1"),
+          new THREE.Color("#a78bfa"),
+          new THREE.Color("#2dd4bf"),
+        ]
+      : [
+          new THREE.Color("#312e81"),
+          new THREE.Color("#1e1b4b"),
+          new THREE.Color("#581c87"),
+          new THREE.Color("#134e4a"),
+        ];
+
+    let n = 0;
+    while (n < COUNT) {
+      const x = (Math.random() * 2 - 1) * 5;
+      const y = (Math.random() * 2.2 - 1.1) * 5;
+      const z = (Math.random() * 2 - 1) * 1.6;
+      const nx = x / 5, ny = y / 5;
+
+      if (ny > 0.8) continue;
+      const hw = ny < 0 ? 1 - Math.pow(-ny, 1.45) : 1;
+      if (Math.abs(nx) > hw) continue;
+      
+      const cd = Math.sqrt(nx * nx + (ny > 0 ? 0 : ny * ny));
+      if (Math.abs(z / 5) > 0.42 * (1 - cd)) continue;
+
+      const dky = ny - 0.14;
+      if (Math.sqrt(nx * nx + dky * dky) < 0.23) continue;
+      if (ny < 0.14 && ny > -0.38 && Math.abs(nx) < 0.085 + (0.14 - ny) * 0.22) continue;
+
+      pos[n * 3] = x; pos[n * 3 + 1] = y; pos[n * 3 + 2] = z;
+
+      const c = palette[Math.floor(Math.random() * palette.length)];
+      col[n * 3] = c.r; col[n * 3 + 1] = c.g; col[n * 3 + 2] = c.b;
+      n++;
+    }
+
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+
+    const mat = new THREE.PointsMaterial({
+      size: isDark ? 0.035 : 0.042,
+      vertexColors: true,
+      transparent: true,
+      opacity: isDark ? 0.85 : 1.0,
+      blending: isDark ? THREE.AdditiveBlending : THREE.NormalBlending,
+      depthWrite: false,
+    });
+
+    const shield = new THREE.Points(geo, mat);
+    scene.add(shield);
+
+    const glowGeo = new THREE.IcosahedronGeometry(5.2, 1);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: isDark ? "#4f46e5" : "#6366f1",
+      transparent: true,
+      opacity: 0.02,
+      wireframe: true,
+    });
+    const atom = new THREE.Mesh(glowGeo, glowMat);
+    scene.add(atom);
+
+    const createRing = (radius: number, rx: number, ry: number, op: number, speed: number) => {
+        const rGeo = new THREE.TorusGeometry(radius, 0.008, 16, 120);
+        const rMat = new THREE.MeshBasicMaterial({
+            color: isDark ? "#c7d2fe" : "#312e81",
+            transparent: true,
+            opacity: op,
+        });
+        const r = new THREE.Mesh(rGeo, rMat);
+        r.rotation.x = rx; r.rotation.y = ry;
+        (r as any).rotSpeed = speed;
+        return r;
+    };
+
+    const rings = [
+      createRing(5.4, Math.PI / 2.1, 0, 0.25, 0.002),
+      createRing(5.6, Math.PI / 3, Math.PI / 4, 0.15, -0.0015),
+      createRing(5.2, -Math.PI / 4, -Math.PI / 6, 0.2, 0.001),
+    ];
+    rings.forEach(r => scene.add(r));
+
+    let mx = 0, my = 0;
+    const onMove = (e: MouseEvent) => {
+      mx = (e.clientX / window.innerWidth - 0.5) * 2;
+      my = (e.clientY / window.innerHeight - 0.5) * 2;
+    };
+    window.addEventListener("mousemove", onMove);
+
+    let frame: number;
+    const tick = () => {
+      frame = requestAnimationFrame(tick);
+      shield.rotation.y += 0.0008;
+      shield.rotation.y += (mx * 0.22 - shield.rotation.y) * 0.06;
+      shield.rotation.x += (my * 0.22 - shield.rotation.x) * 0.06;
+      atom.rotation.y -= 0.001;
+      rings.forEach(r => r.rotation.z += (r as any).rotSpeed);
+      renderer.render(scene, camera);
+    };
+    tick();
+
+    const onResize = () => {
+      if (!mount) return;
+      camera.aspect = mount.clientWidth / mount.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(mount.clientWidth, mount.clientHeight);
+    };
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("resize", onResize);
+      if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
+      geo.dispose(); mat.dispose(); glowGeo.dispose(); glowMat.dispose(); renderer.dispose();
+    };
+  }, []);
+
+  return <div ref={mountRef} className="w-full h-full" />;
+};
+
+// ─── Component Data ──────────────────────────────────────────────────────────
 const features = [
-  {
-    icon: ShieldCheck,
-    title: "Phishing-Proof Surface",
-    description:
-      "Visual secrets are never exposed to partner apps, making them impossible to relay through fake portals.",
-  },
-  {
-    icon: Lock,
-    title: "Replay Resistant",
-    description:
-      "Short-lived sessions and request fingerprint binding ensure every transaction is unique and secure.",
-  },
-  {
-    icon: Code2,
-    title: "No SDK Lock-in",
-    description:
-      "Universal REST endpoints. Works seamlessly with Node.js, Python, Go, Java, and any HTTP backend.",
-  },
-  {
-    icon: Globe2,
-    title: "Tenant Isolation",
-    description:
-      "Complete data segregation. Each partner gets isolated API keys, callback allowlists, and user records.",
-  },
-  {
-    icon: Eye,
-    title: "Cognitive Airgap",
-    description:
-      "The computation happens in the user's brain, not on the device. Malware cannot read what doesn't exist in memory.",
-  },
-  {
-    icon: Server,
-    title: "Zero Knowledge Auth",
-    description:
-      "We verify the proof, not the password. Your backend remains the single source of truth for user identity.",
-  },
+  { icon: ShieldCheck, tag: "01", title: "Phishing-Proof", description: "Visual secrets remain in-mind, never reaching the device screen or RAM." },
+  { icon: Lock,        tag: "02", title: "Replay-Locked",    description: "Session-bound entropy ensures one-time validity for every mental handshake." },
+  { icon: Code2,       tag: "03", title: "Universal REST",   description: "Zero SDK installation. Connect any backend in under thirty minutes flat." },
+  { icon: Globe2,      tag: "04", title: "Edge Isolation",   description: "Isolated tenant environments with dedicated keys and granular audit trails." },
+  { icon: Eye,         tag: "05", title: "Cognitive Gap",    description: "Verification bypasses hardware. Malware cannot scan a user's visualization." },
+  { icon: Server,      tag: "06", title: "State-Free",       description: "We sign the proof, you keep the session. Your DB remains the single truth." },
 ];
 
 const useCases = [
-  {
-    title: "Financial Institutions",
-    description: "Protect high-value transfers and beneficiary additions.",
-    icon: <Lock className="h-6 w-6 text-blue-600 dark:text-blue-400"/>,
-    color: "bg-blue-100 dark:bg-blue-900/30"
-  },
-  {
-    title: "Healthcare Portals",
-    description: "Secure patient data access and medical record downloads.",
-    icon: <ShieldCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-400"/>,
-    color: "bg-emerald-100 dark:bg-emerald-900/30"
-  },
-  {
-    title: "Enterprise VPNs",
-    description: "Add a visual second factor to remote access gateways.",
-    icon: <Globe2 className="h-6 w-6 text-purple-600 dark:text-purple-400"/>,
-    color: "bg-purple-100 dark:bg-purple-900/30"
-  },
-  {
-    title: "Crypto Exchanges",
-    description: "Stop wallet drainers and unauthorized withdrawals.",
-    icon: <Zap className="h-6 w-6 text-amber-600 dark:text-amber-400"/>,
-    color: "bg-amber-100 dark:bg-amber-900/30"
-  }
+  { icon: Lock,        title: "Financial",   sub: "Institutions", desc: "Wire transfers & beneficiary setup protection.", grad: "from-blue-600/80 to-indigo-700/80" },
+  { icon: ShieldCheck, title: "Healthcare",  sub: "Portals",      desc: "Patient record access & HIPAA-safe downloads.", grad: "from-emerald-600/80 to-teal-700/80" },
+  { icon: Globe2,      title: "Enterprise",  sub: "Infra",        desc: "Visual 2FA for privileged SSH & VPN access.", grad: "from-violet-600/80 to-purple-700/80" },
+  { icon: Zap,         title: "Exchanges",   sub: "Crypto",       desc: "Stop wallet drainers & unauthorized withdrawals.", grad: "from-amber-500/80 to-orange-600/80" },
 ];
 
 const stats = [
-  { label: "Secrets Stored", value: "0", sub: "Zero-knowledge architecture" },
-  { label: "Visual Entropy", value: "1.2M+", sub: "Combination possibilities" },
-  { label: "Deployment Time", value: "< 30m", sub: "Standard REST API" },
-  { label: "Uptime SLA", value: "99.9%", sub: "Enterprise grade reliability" },
+  { v: "0",     l: "Stored Secrets",  n: "Zero-knowledge core" },
+  { v: "1.2M+", l: "Entropy Variants", n: "Mental hash depth" },
+  { v: "API",   l: "First Engine",     n: "Developer centric" },
+  { v: "99.9%", l: "Network Health",   n: "SLA guaranteed" },
 ];
 
+// ─── View ───────────────────────────────────────────────────────────────────
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-950 dark:bg-slate-950 dark:text-slate-50 relative overflow-x-hidden">
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap');
+        
+        body { font-family:'Inter', sans-serif; -webkit-font-smoothing:antialiased; }
+        .serif { font-family:'Instrument Serif', serif; font-style:italic; }
+
+        .type-glass {
+          display: inline-block;
+          font-family: 'Instrument Serif', serif;
+          font-style: italic;
+          background: linear-gradient(160deg, #4f46e5, #818cf8);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          filter: drop-shadow(2px 2px 0px #c7d2fe) 
+                  drop-shadow(4px 4px 12px rgba(99,102,241,0.15));
+          transform: perspective(400px) rotateX(2deg);
+        }
+        .dark .type-glass {
+          background: linear-gradient(160deg, #c7d2fe, #ffffff);
+          -webkit-background-clip: text;
+          filter: drop-shadow(0px 0px 15px rgba(255,255,255,0.2));
+        }
+
+        .grain-overlay {
+          position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+          background: url("https://grainy-gradients.vercel.app/noise.svg");
+          opacity: 0.03; pointer-events: none; z-index: 9999;
+        }
+
+        .grid-boutique {
+          background-image: 
+            linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+          background-size: 40px 40px;
+        }
+        .dark .grid-boutique {
+          background-image: 
+            linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px);
+        }
+
+        .boutique-card {
+           transition: all 0.5s cubic-bezier(0.165, 0.84, 0.44, 1);
+           border: 1px solid rgba(0,0,0,0.02);
+           background: rgba(255,255,255,0.4);
+           backdrop-filter: blur(12px);
+        }
+        .dark .boutique-card {
+           border: 1px solid rgba(255,255,255,0.03);
+           background: rgba(10,10,15,0.3);
+        }
+        .boutique-card:hover {
+           transform: translateY(-5px) scale(1.01);
+           border-color: rgba(99,102,241,0.15);
+           box-shadow: 0 15px 35px -10px rgba(0,0,0,0.04);
+        }
+        .dark .boutique-card:hover {
+           box-shadow: 0 15px 45px -15px rgba(0,0,0,0.5);
+        }
+
+        @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+        .float { animation: float 5s ease-in-out infinite; }
+      `}</style>
+
+      <div className="grain-overlay" />
       
-      {/* Background Gradients */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[40rem] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-200/40 via-sky-100/20 to-transparent dark:from-indigo-900/20 dark:via-slate-900/40" />
+      <div className="min-h-screen bg-[#fafbfc] dark:bg-[#06060a] text-slate-800 dark:text-zinc-100 transition-colors duration-700 overflow-x-hidden">
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32">
-        <div className="container mx-auto px-6 text-center">
-          <div className="mx-auto max-w-5xl space-y-8">
-            <div className="flex justify-center">
-              <Badge
-                variant="outline"
-                className="rounded-full border-slate-200 bg-white/50 px-4 py-1.5 text-sm font-medium text-slate-600 shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-300"
-              >
-                <span className="mr-2 inline-flex h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                Banking-Grade Cognitive Security
+        {/* ════════════════════════════════════════════
+            HERO
+        ════════════════════════════════════════════ */}
+        <section className="grid-boutique relative min-h-screen flex items-center overflow-hidden">
+          
+          <div className="absolute right-[-2%] top-1/2 -translate-y-1/2 w-[52%] h-[80%] z-0 hidden lg:block opacity-95 float">
+             <div className="absolute inset-0 bg-indigo-500/5 dark:bg-indigo-500/15 blur-[120px] rounded-full" />
+             <ParticleShield />
+          </div>
+
+          <div className="container mx-auto px-10 lg:px-20 relative z-10">
+            <div className="w-full lg:w-[54%] xl:w-[48%] lg:ml-24 xl:ml-32">
+              
+              <Badge variant="outline" className="mb-10 border-slate-200 dark:border-white/10 bg-white/50 dark:bg-white/5 backdrop-blur-md px-5 py-2 rounded-full text-[11px] uppercase font-black tracking-[0.25em] text-slate-500 dark:text-zinc-400">
+                 <Cpu className="h-3.5 w-3.5 mr-2 text-indigo-500" /> Cognitive Engine V2.5
               </Badge>
-            </div>
 
-            <h1 className="text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-7xl lg:text-8xl">
-              Stop Phishing with <br className="hidden sm:block" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600">
-                Visual Intelligence
-              </span>
-            </h1>
+              <h1 className="text-[3rem] sm:text-[3.8rem] font-[900] tracking-[-0.045em] text-slate-900 dark:text-white leading-[0.98] mb-8">
+                Redefining auth <br />
+                with <span className="type-glass text-[3.4rem] sm:text-[4.5rem]">Visual Intelligence.</span>
+              </h1>
 
-            <p className="mx-auto max-w-2xl text-xl leading-relaxed text-slate-600 dark:text-slate-400">
-              The first authentication layer that happens in the user's mind. 
-              <span className="font-semibold text-slate-900 dark:text-white"> Zero shared secrets. Zero logic leak.</span> Protection against RATs, bots, and modern phishing.
-            </p>
+              <p className="text-[1.125rem] text-slate-500 dark:text-zinc-400 leading-[1.8] max-w-[480px] mb-12 font-medium">
+                The only security layer that happens inside your user's mind. Secure against RATs, botnets, and session relay attacks with 
+                <span className="text-indigo-600 dark:text-indigo-300 font-bold"> zero device footprint</span>.
+              </p>
 
-            <div className="flex flex-col items-center justify-center gap-4 sm:flex-row pt-4">
-              <Button
-                asChild
-                size="lg"
-                className="h-14 rounded-full bg-slate-900 px-8 text-base font-semibold text-white shadow-xl shadow-indigo-500/20 hover:bg-slate-800 hover:scale-105 transition-all dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
-              >
-                <Link href="/developers">
-                  Start Integration <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="h-14 rounded-full border-slate-300 bg-white/50 px-8 text-base font-semibold text-slate-700 backdrop-blur-sm hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                <Link href="/partner-live?mode=test">Try Live Demo</Link>
-              </Button>
-            </div>
+              <div className="flex flex-wrap items-center gap-5 mb-16">
+                <Button asChild size="lg" className="h-16 px-12 rounded-full bg-slate-900 dark:bg-white text-white dark:text-black font-black text-[16px] hover:scale-105 transition-all shadow-2xl shadow-slate-900/10 dark:shadow-white/5 active:scale-95 border-0">
+                   <Link href="/developers" className="flex items-center gap-3">
+                      Deploy Now <ArrowRight className="h-5 w-5" />
+                   </Link>
+                </Button>
+                <Button asChild variant="ghost" className="h-16 px-10 rounded-full border border-slate-200/50 dark:border-white/10 text-slate-600 dark:text-zinc-300 font-bold text-[15px] hover:bg-white dark:hover:bg-white/5 backdrop-blur-sm transition-all whitespace-nowrap">
+                   <Link href="/partner-live?mode=test">Try Live Demo</Link>
+                </Button>
+              </div>
 
-            {/* Trust Badges */}
-            <div className="pt-12 flex flex-wrap justify-center gap-8 opacity-60 grayscale transition-all hover:grayscale-0">
-               <div className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                  <ShieldCheck className="h-5 w-5" /> SOC2 Compliant
-               </div>
-               <div className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                  <Lock className="h-5 w-5" /> 256-bit Encryption
-               </div>
-               <div className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                  <Globe2 className="h-5 w-5" /> Global Edge Network
-               </div>
+              <div className="flex items-center gap-14 opacity-30 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-700">
+                 <div className="flex items-center gap-3 text-[11px] font-black tracking-[0.3em]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-slate-900 dark:bg-white" /> SOC2 TYPE II
+                 </div>
+                 <div className="flex items-center gap-3 text-[11px] font-black tracking-[0.3em]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-slate-900 dark:bg-white" /> AES-256 E2E
+                 </div>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Stats Section */}
-      <section className="py-12 border-y border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-800">
-         <div className="container mx-auto px-6">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
-               {stats.map((stat) => (
-                  <div key={stat.label} className="space-y-1">
-                     <p className="text-4xl font-extrabold text-slate-900 dark:text-white">{stat.value}</p>
-                     <p className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">{stat.label}</p>
-                     <p className="text-[10px] text-slate-500 dark:text-slate-400">{stat.sub}</p>
-                  </div>
-               ))}
-            </div>
-         </div>
-      </section>
-
-      {/* Value Proposition */}
-      <section className="py-24 relative overflow-hidden">
-        <div className="container mx-auto px-6">
-           <div className="mx-auto max-w-3xl text-center mb-16">
-             <Badge variant="secondary" className="mb-4 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">WHY FRAUDSHIELD</Badge>
-             <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-               Defend against threats that <br/> bypass 2FA.
-             </h2>
-             <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
-               Traditional OTPs and Push notifications are vulnerable to relay attacks and fatigue. 
-               We introduce a cognitive gap that automated scripts cannot cross.
-             </p>
+        {/* ════════════════════════════════════════════
+            STATS
+        ════════════════════════════════════════════ */}
+        <section className="bg-white/40 dark:bg-[#0b0b10]/40 border-y border-slate-100 dark:border-white/5 backdrop-blur-3xl">
+           <div className="container mx-auto px-10">
+              <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-slate-100 dark:divide-white/5">
+                 {stats.map((s) => (
+                    <div key={s.l} className="px-10 py-16 text-left group cursor-default">
+                       <p className="text-[2.6rem] font-[900] text-slate-900 dark:text-white tracking-tighter mb-1 transition-transform group-hover:translate-y-[-2px]">{s.v}</p>
+                       <p className="text-[11px] font-black uppercase tracking-[0.3em] text-indigo-600 dark:text-indigo-400 mb-0.5">{s.l}</p>
+                       <p className="text-[11px] text-slate-400 dark:text-zinc-600 font-bold">{s.n}</p>
+                    </div>
+                 ))}
+              </div>
            </div>
+        </section>
 
-           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature, i) => (
-                 <Card key={feature.title} className="border-slate-200 bg-white shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800">
-                    <CardContent className="p-6">
-                       <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400">
-                          <feature.icon className="h-6 w-6" />
+        {/* ════════════════════════════════════════════
+            FEATURES - System Internals
+        ════════════════════════════════════════════ */}
+        <section className="py-40 bg-white dark:bg-[#06060a]">
+           <div className="container mx-auto px-10 lg:px-20">
+              <div className="max-w-xl mb-24 lg:ml-24 xl:ml-32">
+                 <Badge className="mb-6 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-indigo-100 dark:border-indigo-500/20 px-5 py-2 rounded-full uppercase text-[10px] font-black tracking-[0.3em]">System Internals</Badge>
+                 <h2 className="text-[2.6rem] font-[900] tracking-[-0.04em] text-slate-900 dark:text-white leading-[1.05] mb-8">
+                    Defense that Malware <br/> <span className="serif text-indigo-500/80">cannot read.</span>
+                 </h2>
+                 <p className="text-[1.05rem] text-slate-500 dark:text-zinc-400 leading-relaxed font-semibold">
+                    FraudShield moves the authentication secret from the device storage to the user's mind. 
+                    Calculations happen in biological neural networks — the only hardware you can't scan.
+                 </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                 {features.map((f) => (
+                    <div key={f.tag} className="boutique-card p-12 rounded-[3rem] relative group border-slate-100/50">
+                       <div className="mb-10 h-14 w-14 flex items-center justify-center rounded-[1.5rem] bg-slate-50 dark:bg-white/5 text-slate-700 dark:text-zinc-300 group-hover:bg-slate-900 dark:group-hover:bg-white group-hover:text-white dark:group-hover:text-black transition-all duration-500">
+                          <f.icon className="h-7 w-7" strokeWidth={2.5} />
                        </div>
-                       <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{feature.title}</h3>
-                       <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                          {feature.description}
-                       </p>
-                    </CardContent>
-                 </Card>
-              ))}
+                       <div className="flex items-center gap-4 mb-5">
+                          <span className="text-[12px] font-[900] text-indigo-500/50">C_{f.tag}</span>
+                          <h3 className="text-[1.2rem] font-[900] text-slate-900 dark:text-white tracking-tight">{f.title}</h3>
+                       </div>
+                       <p className="text-[0.95rem] text-slate-500 dark:text-zinc-400 leading-relaxed font-bold opacity-80">{f.description}</p>
+                    </div>
+                 ))}
+              </div>
            </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Integration Preview */}
-      <section className="py-24 bg-slate-50 dark:bg-slate-900 relative">
-         <div className="container mx-auto px-6">
-            <div className="grid lg:grid-cols-2 gap-16 items-center">
-               <div>
-                  <Badge variant="outline" className="mb-6 bg-white dark:bg-slate-800">INTEGRATION FLOW</Badge>
-                  <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-6">
-                     Add a Cognitive Airgap in 4 steps.
-                  </h2>
-                  <p className="text-lg text-slate-600 dark:text-slate-400 mb-10 leading-relaxed">
-                     Our REST API inserts cleanly into your existing login pipeline. 
-                     No need to rip and replace your current identity provider. 
-                     Just add the challenge step.
-                  </p>
-                  
-                  <div className="space-y-8">
-                     {[
-                        { num: "1", title: "Login", desc: "User enters username & password on your site." },
-                        { num: "2", title: "Challenge", desc: "FraudShield presents a visual cognitive puzzle." },
-                        { num: "3", title: "Verify", desc: "User solves it mentally and submits the answer." },
-                        { num: "4", title: "Secure", desc: "We sign the result. You grant access." }
-                     ].map((step) => (
-                        <div key={step.num} className="flex gap-4">
-                           <div className="flex-none">
-                              <span className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-slate-200 bg-white text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                                 {step.num}
-                              </span>
-                           </div>
-                           <div>
-                              <h3 className="text-lg font-bold text-slate-900 dark:text-white">{step.title}</h3>
-                              <p className="text-sm text-slate-600 dark:text-slate-400">{step.desc}</p>
-                           </div>
-                        </div>
-                     ))}
-                  </div>
+        {/* ════════════════════════════════════════════
+            USE CASES - High-Value Flows
+        ════════════════════════════════════════════ */}
+        <section className="py-40 bg-[#fafbfc] dark:bg-[#0b0b10] border-t border-slate-100 dark:border-white/5 relative overflow-hidden">
+           <div className="absolute top-0 right-0 w-[40%] h-[100%] bg-gradient-to-l from-indigo-500/5 dark:from-indigo-500/10 to-transparent pointer-events-none" />
+           
+           <div className="container mx-auto px-10 lg:px-20 relative">
+              <div className="max-w-2xl mb-24 lg:ml-24 xl:ml-32">
+                 <p className="text-[11px] font-black uppercase tracking-[0.4em] text-emerald-600 dark:text-emerald-400 mb-6">High-Value Flows</p>
+                 <h2 className="text-[2.6rem] font-[900] tracking-[-0.04em] text-slate-900 dark:text-white leading-[1.05] mb-8">
+                    Enforce Trust on <br/> <span className="serif text-emerald-500">Critical Actions.</span>
+                 </h2>
+                 <p className="text-[1.1rem] text-slate-500 dark:text-zinc-400 font-bold max-w-md">
+                    Strategic friction where password compromise would be irreversible. Stop wallet drainers and unauthorized access gateways.
+                 </p>
+              </div>
 
-                  <div className="mt-10">
-                     <Button asChild variant="outline" className="rounded-full h-12 px-6">
-                        <Link href="/how-it-works">View Architecture Diagram</Link>
-                     </Button>
-                  </div>
-               </div>
-               
-               <div className="relative">
-                  <div className="relative rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
-                     <div className="rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900">
-                        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-                           <div className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                           <div className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                           <div className="h-2.5 w-2.5 rounded-full bg-green-400" />
-                        </div>
-                        <div className="p-8 space-y-6 flex flex-col items-center justify-center min-h-[300px]">
-                           <ShieldCheck className="h-20 w-20 text-indigo-200 dark:text-indigo-900/50 mb-4" />
-                           <div className="text-center space-y-2">
-                             <div className="h-4 w-48 rounded bg-slate-200 dark:bg-slate-800 mx-auto" />
-                             <div className="h-3 w-32 rounded bg-slate-100 dark:bg-slate-800 mx-auto" />
-                           </div>
-                           <div className="w-full max-w-sm h-12 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800/50" />
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
-         </div>
-      </section>
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                 {useCases.map((uc) => (
+                    <div key={uc.title} className="boutique-card group p-10 rounded-[3.2rem] bg-white dark:bg-[#0f0f15]/80">
+                       <div className={`mb-10 inline-flex p-5 rounded-[1.8rem] bg-gradient-to-br ${uc.grad} shadow-2xl shadow-indigo-500/20 group-hover:scale-110 transition-transform duration-500`}>
+                          <uc.icon className="h-7 w-7 text-white" strokeWidth={3} />
+                       </div>
+                       <div className="mb-6">
+                          <p className="text-[12px] font-black uppercase tracking-[0.25em] text-slate-400 dark:text-zinc-600 mb-2">{uc.sub}</p>
+                          <h3 className="text-[1.4rem] font-[900] text-slate-900 dark:text-white tracking-tighter leading-none">{uc.title}</h3>
+                       </div>
+                       <p className="text-[0.95rem] text-slate-500 dark:text-zinc-400 leading-snug mb-10 font-bold opacity-90">{uc.desc}</p>
+                       <Link href="#" className="inline-flex items-center gap-3 text-[12px] font-black text-indigo-600 dark:text-indigo-400 hover:gap-5 transition-all uppercase tracking-[0.2em]">
+                          Secure Link <ArrowRight className="h-4 w-4" />
+                       </Link>
+                    </div>
+                 ))}
+              </div>
+           </div>
+        </section>
 
-      {/* Use Cases */}
-      <section className="py-24">
-         <div className="container mx-auto px-6">
-            <div className="text-center max-w-3xl mx-auto mb-16">
-               <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4">Secure Critical Actions</h2>
-               <p className="text-lg text-slate-600 dark:text-slate-400">
-                  Ideal for high-stakes flows where password compromise would be catastrophic.
-               </p>
-            </div>
-            
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-               {useCases.map((useCase) => (
-                  <div key={useCase.title} className="p-6 rounded-2xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition-all dark:bg-slate-900 dark:border-slate-800">
-                     <div className={`mb-4 inline-flex p-3 rounded-xl ${useCase.color}`}>{useCase.icon}</div>
-                     <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{useCase.title}</h3>
-                     <p className="text-sm text-slate-600 dark:text-slate-400">{useCase.description}</p>
-                  </div>
-               ))}
-            </div>
-         </div>
-      </section>
+        {/* ════════════════════════════════════════════
+            FINAL CTA
+        ════════════════════════════════════════════ */}
+        <section className="py-48 bg-slate-950 relative overflow-hidden border-t border-white/5">
+           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_100%,rgba(99,102,241,0.2),transparent_70%)] pointer-events-none" />
+           
+           <div className="container mx-auto px-10 lg:px-20 relative z-10 text-left lg:text-center flex flex-col items-start lg:items-center">
+              <Badge className="mb-10 bg-indigo-500/10 text-indigo-300 border-indigo-500/20 px-6 py-2.5 rounded-full uppercase text-[11px] font-black tracking-[0.4em]">Scalable Defense</Badge>
+              <h2 className="text-[2.8rem] sm:text-[4rem] font-[900] text-white tracking-[-0.05em] leading-[0.9] mb-12 max-w-3xl">
+                 Zero shared secrets. <br className="hidden md:block"/> 
+                 Total <span className="type-glass">visual security.</span>
+              </h2>
+              <div className="flex flex-wrap gap-6 items-center lg:justify-center">
+                 <Button asChild size="lg" className="h-18 px-14 rounded-full bg-white text-black font-[900] text-[16px] hover:bg-zinc-200 transition-all active:scale-95 shadow-[0_25px_50px_-12px_rgba(255,255,255,0.2)]">
+                    <Link href="/admin">Request API Access</Link>
+                 </Button>
+                 <Button asChild variant="outline" size="lg" className="h-18 px-14 rounded-full border-white/20 text-white font-bold text-[16px] hover:bg-white/10 transition-all active:scale-95 bg-transparent backdrop-blur-xl">
+                    <Link href="/contact">Book Architecture Review</Link>
+                 </Button>
+              </div>
+           </div>
+        </section>
 
-      {/* CTA */}
-      <section className="relative py-24 bg-[#0f172a] overflow-hidden">
-         <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f46e5,#8b5cf6)] opacity-10"></div>
-         <div className="container mx-auto px-6 text-center relative z-10">
-            <h2 className="text-4xl font-extrabold text-white sm:text-5xl mb-6">
-               Ready to secure your users?
-            </h2>
-            <p className="text-xl text-indigo-100 max-w-2xl mx-auto mb-10">
-               Get your API keys today and start integrating the Cognitive Airgap.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-               <Button asChild size="lg" className="h-12 rounded-full bg-white text-slate-900 font-bold hover:bg-slate-100">
-                  <Link href="/admin">Get API Keys</Link>
-               </Button>
-               <Button asChild size="lg" variant="outline" className="h-12 rounded-full border-slate-700 text-white hover:bg-slate-800 hover:text-white bg-transparent">
-                  <Link href="/contact">Contact Sales</Link>
-               </Button>
-            </div>
-         </div>
-      </section>
-      
-    </div>
+      </div>
+    </>
   );
 }
