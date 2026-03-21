@@ -20,17 +20,25 @@ const listKeys = asyncHandler(async (req, res) => {
 
   const keys = await PartnerKey.find({ ownerUserId })
     .sort({ createdAt: -1 })
-    .select("-__v")
+    .select("-__v -keySecretHash -webhookSecret")
     .lean();
 
-  // Mask API keys — only show last 8 chars
+  // Show key_id in full, never show secret
   const masked = keys.map((key) => ({
-    ...key,
-    apiKey:
-      key.apiKey ?
-        `${"•".repeat(Math.max(0, key.apiKey.length - 8))}${key.apiKey.slice(-8)}`
-      : "",
-    apiKeyPreview: key.apiKey ? key.apiKey.slice(-8) : "",
+    id: key._id,
+    partnerId: key.partnerId,
+    label: key.label,
+    keyId: key.keyId,
+    mode: key.mode,
+    webhookUrl: key.webhookUrl,
+    callbackAllowlist: key.callbackAllowlist,
+    active: key.active,
+    usageCount: key.usageCount,
+    lastUsedAt: key.lastUsedAt,
+    createdAt: key.createdAt,
+    updatedAt: key.updatedAt,
+    // Legacy field display (if present)
+    apiKey: key.apiKey || undefined,
   }));
 
   res.json({ keys: masked });
@@ -65,13 +73,17 @@ const generateKey = asyncHandler(async (req, res) => {
     throw new HttpError(429, "Maximum of 20 API keys per account");
   }
 
-  const apiKey = PartnerKey.generateApiKey(mode);
+  // Generate Razorpay-style key pair
+  const { keyId, keySecret, keySecretHash, webhookSecret } =
+    await PartnerKey.generateKeyPair(mode);
 
   const partnerKey = await PartnerKey.create({
     partnerId,
     ownerUserId,
     label,
-    apiKey,
+    keyId,
+    keySecretHash,
+    webhookSecret,
     mode,
     webhookUrl,
     callbackAllowlist,
@@ -82,20 +94,28 @@ const generateKey = asyncHandler(async (req, res) => {
     partnerId,
     userId: ownerUserId,
     req,
-    metadata: { keyId: partnerKey._id.toString(), mode, label },
+    metadata: { keyId, mode, label },
   });
 
-  // Return the full key only on creation (one-time visible)
+  // ⚠ Return the full key_id + key_secret + webhook_secret ONLY on creation (one-time visible)
   res.status(201).json({
     id: partnerKey._id,
     partnerId: partnerKey.partnerId,
     label: partnerKey.label,
-    apiKey: partnerKey.apiKey,
+    key_id: keyId,
+    key_secret: keySecret,
+    webhook_secret: webhookSecret,
     mode: partnerKey.mode,
     webhookUrl: partnerKey.webhookUrl,
     callbackAllowlist: partnerKey.callbackAllowlist,
     createdAt: partnerKey.createdAt,
-    message: "Save this API key — it will not be shown again in full.",
+    message:
+      "Save your key_id and key_secret securely — the key_secret will NOT be shown again. " +
+      "Use them as: Authorization: Basic base64(key_id:key_secret)",
+    usage_example: {
+      header: `Authorization: Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`,
+      curl: `curl -u ${keyId}:${keySecret} https://your-api.com/api/visual-password/v1/init-auth`,
+    },
   });
 });
 
@@ -117,8 +137,7 @@ const rotateKey = asyncHandler(async (req, res) => {
     throw new HttpError(403, "You can only rotate your own keys");
   }
 
-  const oldKeyPreview = existing.apiKey.slice(-8);
-  existing.apiKey = PartnerKey.generateApiKey(existing.mode);
+  const newSecret = await existing.rotateSecret();
   await existing.save();
 
   await logEvent({
@@ -127,9 +146,7 @@ const rotateKey = asyncHandler(async (req, res) => {
     userId: ownerUserId,
     req,
     metadata: {
-      keyId,
-      oldKeyPreview,
-      newKeyPreview: existing.apiKey.slice(-8),
+      keyId: existing.keyId,
       mode: existing.mode,
     },
   });
@@ -137,10 +154,15 @@ const rotateKey = asyncHandler(async (req, res) => {
   res.json({
     id: existing._id,
     partnerId: existing.partnerId,
-    apiKey: existing.apiKey,
+    key_id: existing.keyId,
+    key_secret: newSecret,
     mode: existing.mode,
     message:
-      "Key rotated. Save the new API key — it will not be shown again in full.",
+      "Key secret rotated. Save the new key_secret — it will NOT be shown again. " +
+      "The key_id remains the same.",
+    usage_example: {
+      header: `Authorization: Basic ${Buffer.from(`${existing.keyId}:${newSecret}`).toString("base64")}`,
+    },
   });
 });
 
@@ -170,10 +192,10 @@ const revokeKey = asyncHandler(async (req, res) => {
     partnerId: existing.partnerId,
     userId: ownerUserId,
     req,
-    metadata: { keyId, mode: existing.mode },
+    metadata: { keyId: existing.keyId, mode: existing.mode },
   });
 
-  res.json({ message: "API key revoked", id: keyId });
+  res.json({ message: "API key revoked", id: keyId, key_id: existing.keyId });
 });
 
 // ─── Update Key (webhook URL, callback allowlist, label) ────────────────────
@@ -223,6 +245,7 @@ const updateKey = asyncHandler(async (req, res) => {
   res.json({
     id: existing._id,
     partnerId: existing.partnerId,
+    key_id: existing.keyId,
     label: existing.label,
     webhookUrl: existing.webhookUrl,
     callbackAllowlist: existing.callbackAllowlist,
@@ -252,11 +275,30 @@ const getKeyUsage = asyncHandler(async (req, res) => {
   res.json({
     id: existing._id,
     partnerId: existing.partnerId,
+    key_id: existing.keyId,
     mode: existing.mode,
     usageCount: existing.usageCount,
     lastUsedAt: existing.lastUsedAt,
     active: existing.active,
     createdAt: existing.createdAt,
+  });
+});
+
+// ─── Test Key Credentials ───────────────────────────────────────────────────
+
+const testCredentials = asyncHandler(async (req, res) => {
+  // This endpoint is protected by partnerApiKey middleware,
+  // so if we reach here, credentials are valid
+  const { partner } = req;
+
+  res.json({
+    ok: true,
+    message: "API credentials are valid",
+    key_id: partner?.keyId || "env-based",
+    partnerId: partner?.partnerId || "unknown",
+    mode: partner?.mode || "unknown",
+    authMethod: partner?.authMethod || "unknown",
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -267,4 +309,5 @@ module.exports = {
   revokeKey,
   updateKey,
   getKeyUsage,
+  testCredentials,
 };

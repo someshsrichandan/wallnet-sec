@@ -8,7 +8,7 @@ type MongooseCache = {
   promise: Promise<typeof mongoose> | null;
 };
 
-let cache: MongooseCache = { conn: null, promise: null };
+const cache: MongooseCache = { conn: null, promise: null };
 
 export async function connectDB(): Promise<typeof mongoose> {
   if (cache.conn) return cache.conn;

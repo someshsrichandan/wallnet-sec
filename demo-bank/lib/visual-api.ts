@@ -1,4 +1,4 @@
-import { demoBankConfig } from "@/lib/config";
+import { demoBankConfig, buildAuthHeaders } from "@/lib/config";
 import type { ConsumeResultResponse, InitAuthResponse, InitEnrollResponse } from "@/lib/types";
 
 type RequestOptions = {
@@ -60,7 +60,7 @@ export const initVisualAuth = async (input: {
   const response = await requestJson<InitAuthResponse>("/visual-password/v1/init-auth", {
     method: "POST",
     headers: {
-      "x-api-key": demoBankConfig.partnerApiKey,
+      ...buildAuthHeaders(),
     },
     body: {
       partnerId: demoBankConfig.partnerId,
@@ -83,7 +83,7 @@ export const consumeVisualResult = async (signature: string) =>
   requestJson<ConsumeResultResponse>("/visual-password/v1/partner/consume-result", {
     method: "POST",
     headers: {
-      "x-api-key": demoBankConfig.partnerApiKey,
+      ...buildAuthHeaders(),
     },
     body: {
       signature,
@@ -96,7 +96,7 @@ export const initVisualEnroll = async (input: { partnerUserId: string; state: st
   const response = await requestJson<InitEnrollResponse>("/visual-password/v1/partner/init-enroll", {
     method: "POST",
     headers: {
-      "x-api-key": demoBankConfig.partnerApiKey,
+      ...buildAuthHeaders(),
     },
     body: {
       partnerId: demoBankConfig.partnerId,

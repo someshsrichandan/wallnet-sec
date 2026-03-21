@@ -1,4 +1,4 @@
-import { siteConfig } from "@/lib/config";
+import { siteConfig, buildAuthHeaders } from "@/lib/config";
 import type {
   ConsumeResultResponse,
   InitAuthResponse,
@@ -67,7 +67,7 @@ export const initVisualAuth = async (input: {
     "/visual-password/v1/init-auth",
     {
       method: "POST",
-      headers: { "x-api-key": siteConfig.apiKey },
+      headers: { ...buildAuthHeaders() },
       body: {
         partnerId: siteConfig.partnerId,
         userId: input.partnerUserId,
@@ -89,7 +89,7 @@ export const consumeVisualResult = async (signature: string) =>
     "/visual-password/v1/partner/consume-result",
     {
       method: "POST",
-      headers: { "x-api-key": siteConfig.apiKey },
+      headers: { ...buildAuthHeaders() },
       body: { signature },
     },
   );
@@ -104,7 +104,7 @@ export const initVisualEnroll = async (input: {
     "/visual-password/v1/partner/init-enroll",
     {
       method: "POST",
-      headers: { "x-api-key": siteConfig.apiKey },
+      headers: { ...buildAuthHeaders() },
       body: {
         partnerId: siteConfig.partnerId,
         userId: input.partnerUserId,

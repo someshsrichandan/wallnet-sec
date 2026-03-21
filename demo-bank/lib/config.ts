@@ -2,7 +2,6 @@ const DEFAULT_VISUAL_API_BASE = "http://localhost:3000/api";
 const DEFAULT_VISUAL_VERIFY_ORIGIN = "http://localhost:3001";
 const DEFAULT_DEMO_BANK_ORIGIN = "http://localhost:3002";
 const DEFAULT_PARTNER_ID = "hdfc_bank";
-const DEFAULT_PARTNER_API_KEY = "dev-partner-key-change-me";
 const DEFAULT_COOKIE_SECRET = "change-demo-bank-cookie-secret";
 
 const normalizeOrigin = (value: string, fallback: string) => {
@@ -41,7 +40,16 @@ export const demoBankConfig = {
   partnerId: String(process.env.VISUAL_PARTNER_ID || DEFAULT_PARTNER_ID)
     .trim()
     .toLowerCase(),
-  partnerApiKey: String(process.env.VISUAL_API_KEY || DEFAULT_PARTNER_API_KEY).trim(),
+
+  // ── Razorpay-style credentials ────────────────────────────────────
+  // key_id:  public identifier (always safe to store in config)
+  // key_secret: private credential (keep in .env, never commit)
+  partnerKeyId: String(process.env.VISUAL_KEY_ID || process.env.VISUAL_API_KEY || "").trim(),
+  partnerKeySecret: String(process.env.VISUAL_KEY_SECRET || "").trim(),
+
+  // Legacy: still used as fallback when key_secret is not yet configured
+  partnerApiKey: String(process.env.VISUAL_API_KEY || "").trim(),
+
   visualAdminUrl: String(process.env.VISUAL_ADMIN_URL || "").trim() || `${normalizeOrigin(
     process.env.VISUAL_VERIFY_ORIGIN || DEFAULT_VISUAL_VERIFY_ORIGIN,
     DEFAULT_VISUAL_VERIFY_ORIGIN
@@ -52,14 +60,44 @@ export const demoBankConfig = {
   mongodbUri: process.env.MONGODB_URI || "",
 };
 
+/**
+ * Build the Authorization header value for the WallNet SaaS API.
+ * Uses Razorpay-style Basic auth: base64(key_id:key_secret)
+ * Falls back to legacy x-api-key if key_secret is not configured.
+ */
+export const buildAuthHeaders = (): Record<string, string> => {
+  const { partnerKeyId, partnerKeySecret, partnerApiKey } = demoBankConfig;
+
+  // New Razorpay-style: Basic auth with key_id:key_secret
+  if (partnerKeyId && partnerKeySecret) {
+    const credentials = Buffer.from(`${partnerKeyId}:${partnerKeySecret}`).toString("base64");
+    return { Authorization: `Basic ${credentials}` };
+  }
+
+  // Legacy fallback: x-api-key header
+  if (partnerApiKey) {
+    return { "x-api-key": partnerApiKey };
+  }
+
+  // If key_id is set but no secret, use it as x-api-key (env-based key)
+  if (partnerKeyId) {
+    return { "x-api-key": partnerKeyId };
+  }
+
+  return {};
+};
+
 export const demoBankWarnings = (() => {
   const warnings: string[] = [];
   if (!demoBankConfig.isProduction) {
     return warnings;
   }
 
-  if (demoBankConfig.partnerApiKey === DEFAULT_PARTNER_API_KEY) {
-    warnings.push("VISUAL_API_KEY is using the development default.");
+  if (!demoBankConfig.partnerKeyId) {
+    warnings.push("VISUAL_KEY_ID is not set. API authentication will fail.");
+  }
+  if (!demoBankConfig.partnerKeySecret) {
+    warnings.push("VISUAL_KEY_SECRET is not set. Using legacy x-api-key auth (less secure).");
   }
   if (demoBankConfig.cookieSecret === DEFAULT_COOKIE_SECRET || demoBankConfig.cookieSecret.length < 24) {
     warnings.push("DEMO_BANK_COOKIE_SECRET must be a strong random value (24+ chars).");

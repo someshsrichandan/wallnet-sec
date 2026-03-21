@@ -1,4 +1,4 @@
-const { createHash } = require("crypto");
+const { createHash, createHmac } = require("crypto");
 
 const VisualCredential = require("../models/visualCredential.model");
 const VisualSession = require("../models/visualSession.model");
@@ -291,6 +291,22 @@ const analyzeBehavior = async ({ partnerId, userId, timingData, req }) => {
   return { anomaly, score, factors };
 };
 
+// ─── Webhook HMAC Signing ──────────────────────────────────────────────────
+
+/**
+ * Sign a webhook payload body string using HMAC-SHA256.
+ * This is the same pattern Razorpay uses for webhook verification.
+ *
+ * Partners verify like:
+ *   const expectedSig = crypto.createHmac('sha256', webhookSecret)
+ *     .update(rawBody).digest('hex');
+ *   if (expectedSig === req.headers['x-wallnet-signature']) { ... }
+ */
+const signWebhookPayload = (bodyString, webhookSecret) => {
+  if (!webhookSecret) return "";
+  return createHmac("sha256", webhookSecret).update(bodyString).digest("hex");
+};
+
 // ─── Webhook Delivery ──────────────────────────────────────────────────────
 
 const deliverWebhook = async ({
@@ -299,26 +315,39 @@ const deliverWebhook = async ({
   partnerId,
   sessionToken,
   req,
+  webhookSecret,
 }) => {
   if (!url) return { delivered: false, reason: "no_url" };
 
   try {
+    const timestamp = new Date().toISOString();
     const body = JSON.stringify({
       event: payload.event || "session.completed",
       data: payload,
-      timestamp: new Date().toISOString(),
+      timestamp,
     });
+
+    // Sign the body with HMAC-SHA256 if webhookSecret is available
+    const signature = signWebhookPayload(body, webhookSecret || "");
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10_000);
 
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Webhook-Event": payload.event || "session.completed",
+      "X-Partner-Id": partnerId || "",
+      "X-Wallnet-Timestamp": timestamp,
+    };
+
+    // Include HMAC signature if we have a webhook secret
+    if (signature) {
+      headers["X-Wallnet-Signature"] = signature;
+    }
+
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Webhook-Event": payload.event || "session.completed",
-        "X-Partner-Id": partnerId || "",
-      },
+      headers,
       body,
       signal: controller.signal,
     });
@@ -336,6 +365,7 @@ const deliverWebhook = async ({
         webhookUrl: url,
         statusCode: response.status,
         event: payload.event,
+        signed: Boolean(signature),
       },
     });
 
@@ -364,4 +394,5 @@ module.exports = {
   computeDeviceTrustScore,
   deliverWebhook,
   lookupGeo,
+  signWebhookPayload,
 };

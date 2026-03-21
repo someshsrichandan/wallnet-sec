@@ -886,6 +886,7 @@ const verify = asyncHandler(async (req, res) => {
             partnerId: session.partnerId,
             sessionToken,
             req,
+            webhookSecret: partnerKey.webhookSecret || "",
           });
         }
       })

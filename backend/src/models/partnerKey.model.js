@@ -1,12 +1,29 @@
 const { Schema, model } = require("mongoose");
-const { randomUUID, randomBytes } = require("crypto");
+const { randomBytes } = require("crypto");
+const bcrypt = require("bcrypt");
+
+const BCRYPT_ROUNDS = 10;
 
 const partnerKeySchema = new Schema(
   {
     partnerId: { type: String, required: true, trim: true, index: true },
     ownerUserId: { type: String, required: true, trim: true, index: true },
     label: { type: String, default: "", trim: true },
-    apiKey: { type: String, required: true, unique: true, index: true },
+
+    // ── Razorpay-style key_id + key_secret ──────────────────────────
+    // keyId is the public identifier (always visible, used in Basic auth)
+    keyId: { type: String, required: true, unique: true, index: true },
+
+    // keySecretHash stores the bcrypt hash of the secret (never exposed after creation)
+    keySecretHash: { type: String, required: true },
+
+    // webhookSecret is used to sign webhook payloads (HMAC-SHA256)
+    webhookSecret: { type: String, default: "" },
+
+    // Legacy field — kept for backward compat with env-based keys
+    // New DB-generated keys do NOT use this field
+    apiKey: { type: String, default: "", index: true, sparse: true },
+
     mode: {
       type: String,
       enum: ["test", "live"],
@@ -26,8 +43,46 @@ partnerKeySchema.index({ partnerId: 1, mode: 1 });
 partnerKeySchema.index({ ownerUserId: 1, partnerId: 1 });
 
 /**
- * Generate a new API key with the format: sk_{mode}_vps_{random}
+ * Generate a Razorpay-style key pair.
+ *
+ * Returns: { keyId, keySecret, keySecretHash, webhookSecret }
+ *
+ *   keyId      – public, e.g. "key_test_vps_a1b2c3d4e5f6"
+ *   keySecret  – private, shown once: "secret_test_vps_..."  (32 hex bytes)
+ *   webhookSecret – used to sign webhooks: "whsec_..."       (32 hex bytes)
  */
+partnerKeySchema.statics.generateKeyPair = async function (mode = "test") {
+  const modeTag = mode === "live" ? "live" : "test";
+
+  const keyId = `key_${modeTag}_vps_${randomBytes(12).toString("hex")}`;
+  const keySecret = `secret_${modeTag}_vps_${randomBytes(32).toString("hex")}`;
+  const webhookSecret = `whsec_${randomBytes(32).toString("hex")}`;
+
+  const keySecretHash = await bcrypt.hash(keySecret, BCRYPT_ROUNDS);
+
+  return { keyId, keySecret, keySecretHash, webhookSecret };
+};
+
+/**
+ * Verify a plaintext key secret against the stored hash.
+ */
+partnerKeySchema.methods.verifySecret = async function (plainSecret) {
+  if (!this.keySecretHash) return false;
+  return bcrypt.compare(plainSecret, this.keySecretHash);
+};
+
+/**
+ * Rotate the key secret — generates a new secret + hash.
+ * Returns the new plaintext secret (one-time visible).
+ */
+partnerKeySchema.methods.rotateSecret = async function () {
+  const modeTag = this.mode === "live" ? "live" : "test";
+  const newSecret = `secret_${modeTag}_vps_${randomBytes(32).toString("hex")}`;
+  this.keySecretHash = await bcrypt.hash(newSecret, BCRYPT_ROUNDS);
+  return newSecret;
+};
+
+// ── Legacy helper (kept for backward compat with env-based keys) ──
 partnerKeySchema.statics.generateApiKey = function (mode = "test") {
   const prefix = mode === "live" ? "sk_live_vps_" : "sk_test_vps_";
   return `${prefix}${randomBytes(16).toString("hex")}`;

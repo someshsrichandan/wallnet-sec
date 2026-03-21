@@ -1,14 +1,17 @@
 const router = require("express").Router();
 const partnerController = require("../controllers/partner.controller");
 const auth = require("../middlewares/auth");
+const partnerApiKey = require("../middlewares/partnerApiKey");
 
-router.use(auth);
+// ── Key management (requires user auth — dashboard) ─────────────────────────
+router.get("/keys", auth, partnerController.listKeys);
+router.post("/keys", auth, partnerController.generateKey);
+router.put("/keys/:keyId", auth, partnerController.updateKey);
+router.post("/keys/:keyId/rotate", auth, partnerController.rotateKey);
+router.delete("/keys/:keyId", auth, partnerController.revokeKey);
+router.get("/keys/:keyId/usage", auth, partnerController.getKeyUsage);
 
-router.get("/keys", partnerController.listKeys);
-router.post("/keys", partnerController.generateKey);
-router.put("/keys/:keyId", partnerController.updateKey);
-router.post("/keys/:keyId/rotate", partnerController.rotateKey);
-router.delete("/keys/:keyId", partnerController.revokeKey);
-router.get("/keys/:keyId/usage", partnerController.getKeyUsage);
+// ── Credential test (requires partner API key — used by integrators) ────────
+router.get("/test-credentials", partnerApiKey, partnerController.testCredentials);
 
 module.exports = router;

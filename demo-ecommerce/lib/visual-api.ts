@@ -1,4 +1,4 @@
-import { demoShopConfig } from "@/lib/config";
+import { demoShopConfig, buildAuthHeaders } from "@/lib/config";
 import type { ConsumeResultResponse, InitAuthResponse, InitEnrollResponse } from "@/lib/types";
 
 type RequestOptions = {
@@ -56,7 +56,7 @@ export const initVisualAuth = async (input: {
 
     const response = await requestJson<InitAuthResponse>("/visual-password/v1/init-auth", {
         method: "POST",
-        headers: { "x-api-key": demoShopConfig.partnerApiKey },
+        headers: { ...buildAuthHeaders() },
         body: {
             partnerId: demoShopConfig.partnerId,
             userId: input.partnerUserId,
@@ -76,7 +76,7 @@ export const initVisualEnroll = async (input: { partnerUserId: string; state: st
         "/visual-password/v1/partner/init-enroll",
         {
             method: "POST",
-            headers: { "x-api-key": demoShopConfig.partnerApiKey },
+            headers: { ...buildAuthHeaders() },
             body: {
                 partnerId: demoShopConfig.partnerId,
                 userId: input.partnerUserId,
@@ -93,6 +93,6 @@ export const initVisualEnroll = async (input: { partnerUserId: string; state: st
 export const consumeVisualResult = async (signature: string) =>
     requestJson<ConsumeResultResponse>("/visual-password/v1/partner/consume-result", {
         method: "POST",
-        headers: { "x-api-key": demoShopConfig.partnerApiKey },
+        headers: { ...buildAuthHeaders() },
         body: { signature },
     });
