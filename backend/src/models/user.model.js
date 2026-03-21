@@ -42,10 +42,9 @@ const userSchema = new Schema(
   },
 );
 
-userSchema.pre("validate", function (next) {
+userSchema.pre("validate", function () {
   const normalizedEmail = normalizeEmail(this.email);
   this.emailHash = hashEmailForLookup(normalizedEmail);
-  next();
 });
 
 module.exports = model("User", userSchema);
