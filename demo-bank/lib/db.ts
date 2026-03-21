@@ -1,0 +1,30 @@
+import mongoose from "mongoose";
+
+const MONGODB_URI = process.env.MONGODB_URI as string;
+const DB_NAME = "demo-bank";
+
+type MongooseCache = {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+};
+
+// Use a module-level singleton (works both for Next.js dev hot reload and Vercel serverless)
+let cache: MongooseCache = { conn: null, promise: null };
+
+export async function connectDB(): Promise<typeof mongoose> {
+  if (cache.conn) return cache.conn;
+
+  if (!MONGODB_URI) {
+    throw new Error("MONGODB_URI environment variable is not set");
+  }
+
+  if (!cache.promise) {
+    cache.promise = mongoose.connect(MONGODB_URI, {
+      dbName: DB_NAME,
+      bufferCommands: false,
+    });
+  }
+
+  cache.conn = await cache.promise;
+  return cache.conn;
+}

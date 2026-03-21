@@ -1,0 +1,122 @@
+{
+  "users": [
+    {
+      "id": "e200f83f-df4e-4c05-9b4b-dc0bed0e455b",
+      "partnerUserId": "customer-bank-5916b79b-1b5",
+      "email": "someshsrichandan1@gmail.com",
+      "fullName": "Somesh",
+      "passwordHash": "c70688173e33cd2e4f88a75170731be9:c95268ac76c1b59270d5ba647ae3d6cda8053cba77a91e6a0021ab018861208267a2ab8fc50b55ee75dbb0a9ad5a7c89f2d1f5545684cc19a8c1c46b3373d4b4",
+      "createdAt": "2026-02-18T10:03:56.215Z",
+      "updatedAt": "2026-02-18T10:03:56.215Z"
+    },
+    {
+      "id": "f5c2d6e5-65e7-42ef-a0d6-b50cd99f971f",
+      "partnerUserId": "customer-bank-20a6c645-363",
+      "email": "someshsrichandan2@gmail.com",
+      "fullName": "kalia",
+      "passwordHash": "bdfa34826bfd39eb0f582d0d274a0093:5c2f69a9e2e256ee225446c32b685f8627ee8b9fbabb4a1c0f498b423f57d49fcb839e14e61088fc7da007525307cd449960ef71991de7f41cd71041b0c0debe",
+      "createdAt": "2026-02-18T10:06:54.658Z",
+      "updatedAt": "2026-02-18T10:06:54.658Z"
+    },
+    {
+      "id": "f6ebdb5d-9b24-4051-97dc-30150a9479d1",
+      "partnerUserId": "customer-bank-241da6f3-525",
+      "email": "someshsrichandan3@gmail.com",
+      "fullName": "Somesh Srichandan Sahoo",
+      "passwordHash": "323d7a8eb873b5674b9085852631c3f8:1f589105fd13150731d35efa974a4f37532d74ee636c74fc657d747437259a61e673ea66af18977151f256138894c8bb202ccb376602df5559798f479efe2daf",
+      "visualEnabled": false,
+      "createdAt": "2026-02-18T11:02:23.853Z",
+      "updatedAt": "2026-02-18T11:02:23.853Z"
+    },
+    {
+      "id": "0d2c2c37-60bf-45f4-be53-22d73bcf0e33",
+      "partnerUserId": "customer-bank-410ed1f3-627",
+      "email": "someshsrichandan4@gmail.com",
+      "fullName": "Somesh Srichandan Sahoo",
+      "passwordHash": "f9c4dd79947799349750429da62988b7:185bd1a74a14f21059a6fcdb1b1a04e87c25c4fc257f56e85434753e4fd802287ea1d6c932ade87df639392081880b06e6fb1738d1861719f0a8decda4437277",
+      "visualEnabled": false,
+      "createdAt": "2026-02-18T11:17:51.548Z",
+      "updatedAt": "2026-02-18T11:17:51.548Z"
+    },
+    {
+      "id": "53a7d458-6965-4cd9-bc7c-e1abe5c5ae90",
+      "partnerUserId": "customer-bank-0dd0164e-b77",
+      "email": "someshsrichandan5@gmail.com",
+      "fullName": "Somesh Srichandan Sahoo",
+      "passwordHash": "c869cb2bdbe927b160a4140b18b0310a:13ccd2989181dae1e3fd1fe2c5f96b90b09e3889766b3b89ece307ca099c94e9043bb841cadd0570ff3340aa2842f95d25202c95e4f19d8546b4a22afe4c3864",
+      "visualEnabled": true,
+      "createdAt": "2026-02-18T11:36:54.055Z",
+      "updatedAt": "2026-02-18T11:41:13.634Z"
+    },
+    {
+      "id": "1c270e8e-daad-4929-900f-c558cf8f5b7d",
+      "partnerUserId": "customer-bank-a75d0a55-4cc",
+      "email": "surajsantra3@gmail.com",
+      "fullName": "Suraj Kumar Santra",
+      "passwordHash": "e60c3fce1e1480aaf68ac6350fd11c76:8b9e6d204f1875a0ba65ad6d6a92ab7cfc9c9f9107847927c7420065ea5b5c29c3bad7d6417f28bec1b39b357e369dbec6425fe66342160aac6687444c3af6ac",
+      "visualEnabled": false,
+      "createdAt": "2026-02-18T11:59:58.208Z",
+      "updatedAt": "2026-02-18T11:59:58.208Z"
+    },
+    {
+      "id": "5e0c9210-0dc0-4504-bbd0-3f37eca6e6e0",
+      "partnerUserId": "customer-bank-3e7e7619-8a1",
+      "email": "surajsantra34@gmail.com",
+      "fullName": "Suraj Santra",
+      "passwordHash": "4ffec36685afb94a0608543b03501c7d:9fbcbea06bd87aaf5700ab51892e3e3fc4194fe140567db197ad1b5f15b0ba4cdeb90f276ce1574d1d69f21c38d0f4d0b7becce1852aafc0d1815d7d29ab95ac",
+      "visualEnabled": false,
+      "createdAt": "2026-02-18T12:02:08.189Z",
+      "updatedAt": "2026-02-18T12:02:08.189Z"
+    },
+    {
+      "id": "c7f89ab9-593d-40aa-926b-0b093ffb2ae1",
+      "partnerUserId": "customer-bank-b7e751dc-ad2",
+      "email": "disha@gmail.com",
+      "fullName": "Dishaditya Tripathy",
+      "passwordHash": "5e7df1abc185c4307012c632960bd252:32a024759f7eed6bb211d56dd5053f6ff5f8dd33d55e63b2b8186f05fdee5bbc09c75f2d331fcab5f7348313d7a2eb8e09436032971df72d7e606a7e5c735a46",
+      "visualEnabled": false,
+      "createdAt": "2026-02-18T12:08:04.521Z",
+      "updatedAt": "2026-02-18T12:08:04.521Z"
+    },
+    {
+      "id": "73bcd797-88ef-44ca-bf40-bd5c76d3b0cc",
+      "partnerUserId": "customer-bank-4ed0fc63-6e9",
+      "email": "disha2@gmail.com",
+      "fullName": "disha tripathy",
+      "passwordHash": "b978dabeca929b949a714f87076ea9db:7b0e8da83008ab78738b13ccfdad74813812389696a46e0b2e6cbe4335dfc532565052dabeb676fecc2e384dbe8bffe1a7a25972593f3a4a841f0bede0de1fcc",
+      "visualEnabled": true,
+      "createdAt": "2026-02-18T12:09:32.090Z",
+      "updatedAt": "2026-02-18T12:11:20.953Z"
+    },
+    {
+      "id": "b5206cc4-ae05-4c7b-9aaa-050ea1b82eb2",
+      "partnerUserId": "customer-bank-196d39ce-c37",
+      "email": "taiyojin@gmail.com",
+      "fullName": "taiyojin",
+      "passwordHash": "d0551e03db9847236b0d71e5d417e854:413035279e2ae6000c7e75225b2fa1b5918b39fc78ccb54fbec2c99ae8b1945be81f47be3d259fedd8de500f0d267f9c1aa9a20f81f8554035f5d6eb7dd1901f",
+      "visualEnabled": true,
+      "createdAt": "2026-02-18T14:30:01.748Z",
+      "updatedAt": "2026-02-18T14:32:33.484Z"
+    },
+    {
+      "id": "d452c1d8-f853-4260-b319-db6ab745229c",
+      "partnerUserId": "customer-bank-15ab4a07-5c4",
+      "email": "batman@gmail.com",
+      "fullName": "batman",
+      "passwordHash": "fb0bb7d146883ffcab03d5e6300c4091:c933908187064587558510a4fe977e8afbb8bde9745b3a2f81b83c2d94b67767a3a49833407864a9323a28bdfc139d37921e4724b462f54547aea3085c54104f",
+      "visualEnabled": false,
+      "createdAt": "2026-02-18T15:07:14.268Z",
+      "updatedAt": "2026-02-18T15:07:14.268Z"
+    },
+    {
+      "id": "39ad0497-a529-4c77-bb6b-88573676a4f8",
+      "partnerUserId": "customer-bank-1873f135-663",
+      "email": "somesh@gmail.com",
+      "fullName": "somesh",
+      "passwordHash": "d0c42fe0d7f30867d12a1ac6ace5791e:fccb131f53c022770b915ac81714f63514543e1cd0a45e4c3f09a7b4bdde5e605fe181fca4a68f219504dcf07cd368340de6706ca59167d30d3e79f33825b50d",
+      "visualEnabled": true,
+      "createdAt": "2026-02-18T20:32:18.970Z",
+      "updatedAt": "2026-02-18T20:33:42.261Z"
+    }
+  ]
+}
