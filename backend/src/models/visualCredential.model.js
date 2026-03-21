@@ -1,4 +1,10 @@
 const { Schema, model } = require('mongoose');
+const {
+  decryptJson,
+  decryptString,
+  encryptJson,
+  encryptString,
+} = require('../utils/fieldEncryption');
 
 const visualCredentialSchema = new Schema(
   {
@@ -6,49 +12,62 @@ const visualCredentialSchema = new Schema(
     partnerId: { type: String, required: true, trim: true, index: true },
     userId: { type: String, required: true, trim: true, index: true },
     catalogType: {
-      type: String,
-      enum: ['VEGETABLE', 'CRICKETER', 'BOLLYWOOD'],
+      type: Schema.Types.Mixed,
+      required: true,
       default: 'VEGETABLE',
-      index: true,
+      set: (value) => encryptString(String(value || 'VEGETABLE').trim().toUpperCase()),
+      get: (value) => decryptString(value),
     },
     secretVegetables: {
-      type: [String],
+      type: Schema.Types.Mixed,
       required: true,
-      validate: {
-        validator: (value) => Array.isArray(value) && value.length === 4,
-        message: 'secretVegetables must contain exactly 4 items',
+      set: (value) => encryptJson(value),
+      get: (value) => {
+        const decoded = decryptJson(value, []);
+        return Array.isArray(decoded) ? decoded : [];
       },
     },
     pairVegetables: {
-      type: [String],
+      type: Schema.Types.Mixed,
       default: [],
-      validate: {
-        validator: (value) =>
-          Array.isArray(value) &&
-          value.length <= 2 &&
-          new Set(value).size === value.length &&
-          value.every((item) => typeof item === 'string' && item.trim().length > 0),
-        message: 'pairVegetables must contain up to 2 unique items',
+      set: (value) => encryptJson(value),
+      get: (value) => {
+        const decoded = decryptJson(value, []);
+        return Array.isArray(decoded) ? decoded : [];
       },
     },
     secretLetters: {
-      type: [String],
+      type: Schema.Types.Mixed,
       required: true,
-      validate: {
-        validator: (value) => Array.isArray(value) && value.length === 2,
-        message: 'secretLetters must contain exactly 2 items',
+      set: (value) => encryptJson(value),
+      get: (value) => {
+        const decoded = decryptJson(value, []);
+        return Array.isArray(decoded) ? decoded : [];
       },
     },
-    saltValue: { type: Number, required: true, default: 5 },
+    saltValue: {
+      type: Schema.Types.Mixed,
+      required: true,
+      default: 5,
+      set: (value) => encryptJson(value),
+      get: (value) => {
+        const decoded = decryptJson(value, 5);
+        return typeof decoded === 'number' ? decoded : Number(decoded || 5);
+      },
+    },
     formulaMode: {
-      type: String,
-      enum: ['SALT_ADD', 'POSITION_SUM', 'PAIR_SUM'],
+      type: Schema.Types.Mixed,
+      required: true,
       default: 'SALT_ADD',
+      set: (value) => encryptString(String(value || 'SALT_ADD').trim().toUpperCase()),
+      get: (value) => decryptString(value),
     },
     alphabetMode: {
-      type: String,
-      enum: ['SEQUENTIAL', 'RANDOM'],
+      type: Schema.Types.Mixed,
+      required: true,
       default: 'SEQUENTIAL',
+      set: (value) => encryptString(String(value || 'SEQUENTIAL').trim().toUpperCase()),
+      get: (value) => decryptString(value),
     },
     positionPair: {
       type: [Number],
@@ -70,7 +89,11 @@ const visualCredentialSchema = new Schema(
       default: [],
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true },
+  }
 );
 
 visualCredentialSchema.index({ partnerId: 1, userId: 1 }, { unique: true });

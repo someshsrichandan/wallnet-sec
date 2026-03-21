@@ -44,13 +44,14 @@ function LoginPageContent() {
         verifyUrl?: string;
         needsEnroll?: boolean;
         enrollUrl?: string;
+        enrollReason?: string;
       };
 
       if (!response.ok) {
         throw new Error(data.message || "Unable to start login.");
       }
 
-      // No visual profile yet → redirect to SaaS enrollment UI
+      // No visual profile yet (or stale credential) → redirect to SaaS enrollment UI
       if (data.needsEnroll && data.enrollUrl) {
         window.location.assign(data.enrollUrl);
         return;
@@ -163,7 +164,10 @@ function LoginPageContent() {
           : null}
           {enrollError ?
             <div className="status error">
-              ⚠ Visual password setup failed: {decodeURIComponent(enrollError)}
+              ⚠ Visual password setup issue: {decodeURIComponent(enrollError)}
+              <span style={{ display: "block", marginTop: "0.25rem", fontSize: "0.8rem", opacity: 0.8 }}>
+                Please try signing in again — you may be prompted to re-enroll your visual password.
+              </span>
             </div>
           : null}
           {errorMessage ?

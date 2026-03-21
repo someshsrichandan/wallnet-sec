@@ -1,6 +1,7 @@
 const env = require("../config/env");
 const HttpError = require("../utils/httpError");
 const PartnerKey = require("../models/partnerKey.model");
+const { hashDeterministic } = require("../utils/fieldEncryption");
 
 module.exports = async (req, _res, next) => {
   const apiKeyRaw = String(req.get("x-api-key") || "").trim();
@@ -40,7 +41,16 @@ module.exports = async (req, _res, next) => {
   // Check database-stored API keys (generated via API Key Management)
   if (!accepted) {
     try {
-      const query = { apiKey: apiKeyRaw, active: true };
+      const query = {
+        $or: [
+          { apiKeyHash: hashDeterministic(apiKeyRaw) },
+          { apiKeyHash: hashDeterministic(apiKey) },
+          // Legacy fallback for old plaintext rows before migration
+          { apiKey: apiKeyRaw },
+          { apiKey },
+        ],
+        active: true,
+      };
       if (partnerId && partnerId !== "*") {
         query.partnerId = partnerId;
       }
