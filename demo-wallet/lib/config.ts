@@ -25,7 +25,9 @@ export const demoWalletConfig = {
   isProduction: process.env.NODE_ENV === "production",
   visualApiBase: String(
     process.env.VISUAL_BACKEND_API_BASE_URL || DEFAULT_VISUAL_API_BASE,
-  ).replace(/\/+$/, ""),
+  )
+    .trim()
+    .replace(/\/+$/, ""),
   visualVerifyOrigin: normalizeOrigin(
     process.env.VISUAL_VERIFY_ORIGIN || DEFAULT_VISUAL_VERIFY_ORIGIN,
     DEFAULT_VISUAL_VERIFY_ORIGIN,
@@ -54,7 +56,7 @@ export const demoWalletConfig = {
   cookieSecret: String(process.env.DEMO_WALLET_COOKIE_SECRET || DEFAULT_COOKIE_SECRET).trim(),
   walletSessionHours: toInt(process.env.DEMO_WALLET_SESSION_HOURS, 12),
   pendingSessionMinutes: toInt(process.env.DEMO_WALLET_PENDING_MINUTES, 10),
-  mongodbUri: process.env.MONGODB_URI || "",
+  mongodbUri: String(process.env.MONGODB_URI || "").trim(),
 };
 
 /**
