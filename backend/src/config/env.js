@@ -117,6 +117,9 @@ const hasApiKey = (partnerApiKeys, value) => {
   return false;
 };
 
+const toTrimmedString = (value, fallback = "") =>
+  String(value === undefined || value === null ? fallback : value).trim();
+
 const toHttpsOnlyOrigins = (origins = []) =>
   origins.filter((origin) =>
     String(origin || "")
@@ -131,10 +134,10 @@ const env = {
   nodeEnv,
   isProduction,
   port: toPositiveInteger(process.env.PORT, 3000),
-  mongodbUri: process.env.MONGODB_URI || "",
+  mongodbUri: toTrimmedString(process.env.MONGODB_URI),
   corsOrigins: toOrigins(process.env.CORS_ORIGIN),
   trustProxy: toTrustProxy(process.env.TRUST_PROXY),
-  jsonLimit: process.env.JSON_LIMIT || "10mb",
+  jsonLimit: toTrimmedString(process.env.JSON_LIMIT, "10mb"),
   visualSessionTtlMs: toPositiveInteger(
     process.env.VISUAL_SESSION_TTL_MS,
     DEFAULT_VISUAL_SESSION_TTL_MS,
@@ -157,7 +160,7 @@ const env = {
   partnerApiKeys: parsePartnerApiKeys(process.env.PARTNER_API_KEYS, {
     allowDevFallback: !isProduction,
   }),
-  tokenSecret: process.env.TOKEN_SECRET || DEFAULT_TOKEN_SECRET,
+  tokenSecret: toTrimmedString(process.env.TOKEN_SECRET, DEFAULT_TOKEN_SECRET),
   visualDataEncryptionKey: String(
     process.env.VISUAL_DATA_ENCRYPTION_KEY || "",
   ).trim(),
@@ -193,6 +196,10 @@ const env = {
 
 const validateEnv = () => {
   const errors = [];
+
+  if (!env.mongodbUri) {
+    errors.push("MONGODB_URI must be configured");
+  }
 
   if (env.isProduction) {
     if (
