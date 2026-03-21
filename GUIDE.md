@@ -1,182 +1,307 @@
-# Manual Guide (Admin -> Partner -> Verify -> Callback)
+# WallNet-Sec Setup Guide
 
-This repo simulates a SaaS "visual password" provider (like a bank redirect flow).
+This guide is written for developers who want to run the full project locally, understand what each app does, and avoid the usual setup traps.
 
-The system has two identities:
-- **Owner user**: the authenticated user who can manage a visual profile (via `/admin` and bearer auth).
-- **Partner user**: the bank's user identifier used for login (`partnerUserId` / `userId` in requests).
+If you only need a fast start, run `backend` + `client` first. Then add demo apps one by one.
 
-The visual profile is stored against `(partnerId, partnerUserId)`, and owned by the authenticated user.
+## 1. Prerequisites
 
-## 1. Setup Checklist
+- Node.js `20+`
+- npm `10+`
+- MongoDB running locally or remotely
+- Git
 
-Backend (`backend/.env`):
-- `MONGODB_URI=...`
-- `TOKEN_SECRET=...` (long random, min 32 chars in production)
-- `PARTNER_API_KEYS=hdfc_bank:sk_live_vps_99218844`
-- `CORS_ORIGIN=http://localhost:3001`
-- `PARTNER_CALLBACK_ALLOWLIST=http://localhost:3001`
-- `TRUST_PROXY=1` (recommended behind reverse proxy)
-- Optional tuning:
-  - `VISUAL_SALT_VALUE=7`
-  - `VISUAL_ALPHABET_GRID_SIZE=10` (backend clamps to 9..12 for display)
-  - `VISUAL_SESSION_TTL_MS=300000`
-  - `VISUAL_MAX_ATTEMPTS=3`
+Optional but useful:
 
-Client (`client/.env.local`):
-- `BACKEND_API_BASE_URL=http://localhost:3000/api`
-- `BACKEND_SANDBOX_API_BASE_URL=http://localhost:3000/api` (optional)
-- `PARTNER_SERVER_API_KEY=sk_live_vps_99218844`
-- `PARTNER_SERVER_SANDBOX_API_KEY=sk_test_vps_99218844` (optional)
+- Docker Desktop (for `docker compose` workflow)
 
-Start servers:
+## 2. Clone And Install
+
+From your workspace root:
+
+```bash
+git clone <your-repo-url>
+cd wallnet-sec
+```
+
+Install dependencies per app:
+
+```bash
+cd backend && npm install
+cd ../client && npm install
+cd ../demo-bank && npm install
+cd ../demo-ecommerce && npm install
+cd ../demo-wallet && npm install
+cd ../test-site && npm install
+```
+
+## 3. Environment Setup
+
+### 3.1 Backend
+
+Create `backend/.env`:
+
+Windows:
+
+```bash
+cd backend
+copy .env.example .env
+```
+
+macOS/Linux:
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+Minimum values to set in `backend/.env`:
+
+```env
+NODE_ENV=development
+PORT=3000
+MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+VISUAL_DATA_ENCRYPTION_KEY=replace-with-a-long-random-secret-min-32-chars
+TOKEN_SECRET=replace-with-a-long-random-secret-min-32-chars
+CORS_ORIGIN=http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004
+PARTNER_CALLBACK_ALLOWLIST=http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004
+PARTNER_API_KEYS=hdfc_bank:dev-partner-key-change-me
+```
+
+Notes:
+
+- Keep `PARTNER_API_KEYS` aligned with whichever partner app you are testing.
+- For newer partner integrations, prefer key_id + key_secret generated through partner key APIs.
+
+### 3.2 Client (Main Platform)
+
+Create `client/.env.local` (this file is not currently provided as an example file):
+
+```env
+BACKEND_API_BASE_URL=http://localhost:3000/api
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api
+
+# Partner proxy keys used by server-side routes
+PARTNER_SERVER_API_KEY=dev-partner-key-change-me
+PARTNER_SERVER_SANDBOX_API_KEY=dev-partner-key-change-me
+
+# Optional
+BACKEND_SANDBOX_API_BASE_URL=http://localhost:3000/api
+DEMO_BANK_URL=http://localhost:3002
+NEXT_PUBLIC_DEMO_BANK_URL=http://localhost:3002
+
+# Optional docs/examples rendering values
+FRAUDSHIELD_URL=http://localhost:3000
+FRAUDSHIELD_BASE_URL=http://localhost:3000
+FRAUDSHIELD_API_KEY=dev-partner-key-change-me
+FRAUDSHIELD_PARTNER_ID=hdfc_bank
+APP_BASE_URL=http://localhost:3001
+```
+
+### 3.3 Demo Bank
+
+Create `demo-bank/.env.local` from example:
+
+Windows:
+
+```bash
+cd demo-bank
+copy .env.local.example .env.local
+```
+
+macOS/Linux:
+
+```bash
+cd demo-bank
+cp .env.local.example .env.local
+```
+
+Required keys in `demo-bank/.env.local`:
+
+```env
+DEMO_BANK_PUBLIC_ORIGIN=http://localhost:3002
+VISUAL_BACKEND_API_BASE_URL=http://localhost:3000/api
+VISUAL_VERIFY_ORIGIN=http://localhost:3001
+VISUAL_ADMIN_URL=http://localhost:3001/admin
+VISUAL_PARTNER_ID=hdfc_bank
+VISUAL_KEY_ID=key_test_vps_xxxxxxxxxxxx
+VISUAL_KEY_SECRET=secret_test_vps_xxxxxxxxxxxx
+DEMO_BANK_COOKIE_SECRET=change-demo-bank-cookie-secret
+DEMO_BANK_SESSION_HOURS=12
+DEMO_BANK_PENDING_MINUTES=10
+MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+```
+
+Optional (agent OTP email):
+
+```env
+GMAIL_USER=you@gmail.com
+GMAIL_APP_PASSWORD=your-app-password
+BANK_NAME=HDFC
+```
+
+### 3.4 Demo E-commerce
+
+Create `demo-ecommerce/.env.local` from example:
+
+Windows:
+
+```bash
+cd demo-ecommerce
+copy .env.local.example .env.local
+```
+
+macOS/Linux:
+
+```bash
+cd demo-ecommerce
+cp .env.local.example .env.local
+```
+
+Typical values:
+
+```env
+VISUAL_BACKEND_API_BASE_URL=http://localhost:3000/api
+VISUAL_VERIFY_ORIGIN=http://localhost:3001
+DEMO_SHOP_PUBLIC_ORIGIN=http://localhost:3003
+VISUAL_PARTNER_ID=shopmart
+VISUAL_KEY_ID=key_test_vps_xxxxxxxxxxxx
+VISUAL_KEY_SECRET=secret_test_vps_xxxxxxxxxxxx
+DEMO_SHOP_COOKIE_SECRET=change-demo-shop-cookie-secret-min-32-chars
+DEMO_SHOP_SESSION_HOURS=12
+DEMO_SHOP_PENDING_MINUTES=10
+MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+```
+
+### 3.5 Demo Wallet
+
+Create `demo-wallet/.env.local` manually (no example file currently present):
+
+```env
+VISUAL_BACKEND_API_BASE_URL=http://localhost:3000/api
+VISUAL_VERIFY_ORIGIN=http://localhost:3001
+VISUAL_ADMIN_URL=http://localhost:3001/admin
+
+DEMO_WALLET_PUBLIC_ORIGIN=http://localhost:3004
+VISUAL_PARTNER_ID=nexus_wallet
+
+VISUAL_KEY_ID=key_test_vps_xxxxxxxxxxxx
+VISUAL_KEY_SECRET=secret_test_vps_xxxxxxxxxxxx
+# Legacy fallback
+VISUAL_API_KEY=dev-partner-key-change-me
+
+DEMO_WALLET_COOKIE_SECRET=change-demo-wallet-cookie-secret
+DEMO_WALLET_SESSION_HOURS=12
+DEMO_WALLET_PENDING_MINUTES=10
+MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+```
+
+### 3.6 Test Site (Crypto)
+
+Create `test-site/.env.local` manually (no example file currently present):
+
+```env
+SITE_PUBLIC_ORIGIN=http://localhost:3004
+VISUAL_BACKEND_API_BASE_URL=http://localhost:3000/api
+VISUAL_VERIFY_ORIGIN=http://localhost:3001
+
+VISUAL_PARTNER_ID=hdfc_bank
+
+VISUAL_KEY_ID=key_test_vps_xxxxxxxxxxxx
+VISUAL_KEY_SECRET=secret_test_vps_xxxxxxxxxxxx
+# Legacy fallback
+VISUAL_API_KEY=dev-partner-key-change-me
+
+COOKIE_SECRET=test-site-cookie-secret-change-me
+MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+```
+
+Important:
+
+- `demo-wallet` and `test-site` both default to port `3004`.
+- Run only one at a time, or change one app's `dev` script port.
+
+## 4. Start Services (Recommended Order)
+
+Open separate terminals.
+
+1. Start backend:
+
 ```bash
 cd backend
 npm run dev
 ```
+
+2. Start main client:
+
 ```bash
 cd client
 npm run dev
 ```
 
-## 2. Enroll A Visual Profile (Enrollment Phase)
+3. Start demo apps as needed:
 
-Open:
-- `http://localhost:3001/admin`
-
-Steps:
-1. Register or login (creates an **owner user** and gives you a bearer token in the UI).
-2. Set:
-   - `Partner ID` (example: `hdfc_bank`)
-   - `Partner User ID` (example: `customer-bank-001`)
-3. Select exactly **4 vegetables** from the gallery.
-4. Enter exactly **2 secret letters** (example: `X` and `R`).
-5. Click **Save Visual Profile**.
-
-What this writes:
-- A `VisualCredential` row keyed by `(partnerId, partnerUserId)` and owned by your logged-in user.
-
-Important:
-- The **Partner User ID** you enroll must match the **Partner User ID** you use in `/partner-live`.
-
-## 3. Start The Bank Handshake (Partner Phase)
-
-Open:
-- `http://localhost:3001/partner-live`
-
-Recommended:
-- Click **Open Partner Live** from `/admin`. It will carry the exact enrolled `(partnerId, partnerUserId)` in the URL.
-
-Inputs:
-- `Partner ID` must match what you enrolled.
-- `Partner User ID` must match what you enrolled.
-- `Partner State` is an opaque string passed through the callback (example: `txn-login-001`).
-
-Click:
-- **Continue to SaaS Verify** (redirect mode) or **Launch Secure Popup** (popup mode)
-
-What happens:
-1. Client server route calls SaaS Product API:
-   - `POST /api/product/v1/init-auth?mode=test|live` with `x-api-key` (server-side)
-2. Backend creates a short-lived `VisualSession`.
-3. Browser is redirected to:
-   - `/verify/:sessionToken`
-
-## 4. Complete The Challenge (Verify Phase)
-
-Open:
-- `http://localhost:3001/verify/<sessionToken>`
-
-Screen rules:
-- The visual board shows 18 cards (3 rows x 6 columns) with numbers.
-- The alphabet grid is a smaller grid (9-12 letters), and **all boxes must be filled**.
-- Use the on-screen virtual keypad to enter digits.
-
-Mental step:
-1. Find your secret vegetable (one of your enrolled 4).
-2. Read its assigned number.
-3. Add the salt (shown as "mentally add N").
-4. Put the first digit under your first secret letter, second digit under your second secret letter.
-5. Fill all remaining letters with any digits (noise).
-
-Submit:
-- **Submit Verification**
-
-Outcomes:
-- PASS: SaaS returns a signed `signature` and redirects to the partner callback URL.
-- FAIL/LOCKED: attempts increment; after max attempts session locks.
-
-Honey-pot:
-- If the user enters the original unsalted two digits at the secret letters, the backend flags it as suspicious.
-
-## 5. Validate Callback (Partner Callback Phase)
-
-After PASS, the browser lands on:
-- `/partner-live/callback?...&signature=...`
-
-This page simulates a bank backend validation by calling:
-- `POST /api/product/v1/partner/consume-result?mode=test|live`
-
-If it shows PASS validated, the signature was verified server-side and the session was consumed.
-
-## 6. Changing Inputs And Behavior
-
-### Change partner identifiers (most common)
-- `Partner ID`: edit in `/admin` and `/partner-live` input fields
-- `Partner User ID`: edit in `/admin` and `/partner-live` input fields
-
-Remember: enrollment and handshake must use the same `(partnerId, partnerUserId)` pair.
-
-### Change the API key
-Backend: `backend/.env`
-- `PARTNER_API_KEYS=hdfc_bank:<your-key>`
-
-Client: `client/.env.local`
-- `PARTNER_SERVER_API_KEY=<your-key>`
-- `PARTNER_SERVER_SANDBOX_API_KEY=<your-test-key>` (if using mode=test)
-
-Restart both servers after env changes.
-
-### Change salt value
-Backend:
-- Global default: `VISUAL_SALT_VALUE`
-- Per-credential: send `saltValue` in enroll (UI currently uses backend default)
-
-### Change alphabet grid size
-Backend:
-- `VISUAL_ALPHABET_GRID_SIZE`
-
-Note: backend clamps to 9..12 for the actual grid.
-
-### Change max attempts / TTL
-Backend:
-- `VISUAL_MAX_ATTEMPTS`
-- `VISUAL_SESSION_TTL_MS`
-
-## 7. Debugging
-
-Run backend with trace warnings:
 ```bash
-cd backend
-node --trace-warnings src/server.js
+cd demo-bank && npm run dev
+cd demo-ecommerce && npm run dev
+cd demo-wallet && npm run dev
+# or test-site
+cd test-site && npm run dev
 ```
 
-Common errors:
-- `No visual profile enrolled ...`
-  - You enrolled `Partner User ID=A` but `/partner-live` is sending `Partner User ID=B`.
+## 5. Smoke Test Checklist
+
+After startup, verify these first:
+
+- Backend health: `http://localhost:3000/health`
+- Main client: `http://localhost:3001`
+- Demo bank: `http://localhost:3002`
+- Demo e-commerce: `http://localhost:3003`
+- Demo wallet: `http://localhost:3004`
+
+Then run the core auth path:
+
+1. Open `http://localhost:3001/admin`.
+2. Register/login and enroll a profile with a specific `partnerId` + `partnerUserId`.
+3. Open `http://localhost:3001/partner-live` and use the same pair.
+4. Continue to verify flow and submit challenge.
+5. Confirm callback validation succeeds.
+
+## 6. One-Command Docker Stack (Backend + Client + Mongo)
+
+From project root:
+
+```bash
+docker compose up --build
+```
+
+This is useful for quick backend/client validation, but not for running all demo partner apps.
+
+## 7. Common Issues And Fixes
+
+- `MONGODB_URI environment variable is not set`
+  - Add `MONGODB_URI` in that app's env file and restart.
+
+- `503 Upstream API is unavailable`
+  - Backend is down or `BACKEND_API_BASE_URL` / `VISUAL_BACKEND_API_BASE_URL` is wrong.
+
 - `Invalid API key for partner`
-  - `x-api-key` (or `PARTNER_SERVER_API_KEY`) does not match backend `PARTNER_API_KEYS`.
-- Duplicate key errors in `visualsessions`
-  - Old DB indexes. This repo keeps `sessionId` populated for compatibility.
+  - Partner credentials do not match backend configuration.
+  - Check `PARTNER_API_KEYS` (legacy mode) or key_id/key_secret setup.
 
-## 8. Visual Image + Screen Protection Notes
+- `No visual profile enrolled`
+  - Enrolled `(partnerId, partnerUserId)` does not match the one sent in init-auth.
 
-- Challenge produce cards now use a public ingredient image API (`themealdb`) and auto-fallback to a second public image source, then local SVG fallback if remote images fail.
-- Verify page runs in protected mode with:
-  - watermark overlay
-  - blocked context menu / copy / cut / drag
-  - blocked common capture shortcuts
-  - auto pause when tab/window focus changes
-- Important browser limitation:
-  - No web app can fully block OS-level screenshots or external camera recording. Use these controls as hardening, not absolute DRM.
+- CORS/callback issues
+  - Add all local origins to `CORS_ORIGIN` and `PARTNER_CALLBACK_ALLOWLIST`.
 
+- Port conflict on `3004`
+  - `demo-wallet` and `test-site` use same default port; change one.
+
+## 8. Recommended Production Hardening
+
+- Use strong random values for `TOKEN_SECRET`, encryption keys, and cookie secrets.
+- Keep allowlists strict and HTTPS-only in production.
+- Rotate partner credentials regularly.
+- Never commit real keys/secrets into the repository.
+- Keep API verification and callback consumption server-to-server only.
