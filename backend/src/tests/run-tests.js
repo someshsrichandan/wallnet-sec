@@ -1,4 +1,4 @@
-const assert = require('node:assert/strict');
+const assert = require("node:assert/strict");
 
 const {
   computeSaltedDigits,
@@ -8,28 +8,35 @@ const {
   normalizePositionPair,
   normalizeSecretLetters,
   normalizeSecretVegetableList,
-} = require('../services/visualPassword.service');
+} = require("../services/visualPassword.service");
+const { evaluateFraudRisk } = require("../services/aiGateway.service");
 
 const countVisibleSecrets = (payload, secretVegetables) =>
-  payload.vegetables.filter((item) => secretVegetables.includes(item.name)).length;
+  payload.vegetables.filter((item) => secretVegetables.includes(item.name))
+    .length;
 
 const tests = [
   {
-    name: 'normalizeSecretVegetableList accepts exactly 4 supported vegetables',
+    name: "normalizeSecretVegetableList accepts exactly 4 supported vegetables",
     fn: () => {
-      const vegetables = normalizeSecretVegetableList(['Carrot', 'Potato', 'Tomato', 'Onion']);
-      assert.deepEqual(vegetables, ['Carrot', 'Potato', 'Tomato', 'Onion']);
+      const vegetables = normalizeSecretVegetableList([
+        "Carrot",
+        "Potato",
+        "Tomato",
+        "Onion",
+      ]);
+      assert.deepEqual(vegetables, ["Carrot", "Potato", "Tomato", "Onion"]);
     },
   },
   {
-    name: 'normalizeSecretLetters uppercases and validates distinct letters',
+    name: "normalizeSecretLetters uppercases and validates distinct letters",
     fn: () => {
-      assert.deepEqual(normalizeSecretLetters(['x', 'r']), ['X', 'R']);
-      assert.throws(() => normalizeSecretLetters(['X', 'X']));
+      assert.deepEqual(normalizeSecretLetters(["x", "r"]), ["X", "R"]);
+      assert.throws(() => normalizeSecretLetters(["X", "X"]));
     },
   },
   {
-    name: 'normalizePositionPair validates one/two unique cells in 3x6 range',
+    name: "normalizePositionPair validates one/two unique cells in 3x6 range",
     fn: () => {
       assert.deepEqual(normalizePositionPair([]), []);
       assert.deepEqual(normalizePositionPair([1]), [1]);
@@ -39,120 +46,158 @@ const tests = [
     },
   },
   {
-    name: 'normalizePairVegetables validates a unique pair from secret vegetables',
+    name: "normalizePairVegetables validates a unique pair from secret vegetables",
     fn: () => {
       assert.deepEqual(
-        normalizePairVegetables(['Carrot', 'Tomato'], ['Carrot', 'Potato', 'Tomato', 'Onion']),
-        ['Carrot', 'Tomato']
+        normalizePairVegetables(
+          ["Carrot", "Tomato"],
+          ["Carrot", "Potato", "Tomato", "Onion"],
+        ),
+        ["Carrot", "Tomato"],
       );
       assert.throws(() =>
-        normalizePairVegetables(['Carrot', 'Carrot'], ['Carrot', 'Potato', 'Tomato', 'Onion'])
+        normalizePairVegetables(
+          ["Carrot", "Carrot"],
+          ["Carrot", "Potato", "Tomato", "Onion"],
+        ),
       );
       assert.throws(() =>
-        normalizePairVegetables(['Carrot', 'Apple'], ['Carrot', 'Potato', 'Tomato', 'Onion'])
+        normalizePairVegetables(
+          ["Carrot", "Apple"],
+          ["Carrot", "Potato", "Tomato", "Onion"],
+        ),
       );
     },
   },
   {
-    name: 'computeSaltedDigits returns two output digits',
+    name: "computeSaltedDigits returns two output digits",
     fn: () => {
       const value = computeSaltedDigits({ originalNumber: 42, saltValue: 5 });
-      assert.equal(value.digitOne, '4');
-      assert.equal(value.digitTwo, '7');
+      assert.equal(value.digitOne, "4");
+      assert.equal(value.digitTwo, "7");
     },
   },
   {
-    name: 'createChallengePayload creates eighteen produce cards and expected digits',
+    name: "createChallengePayload creates eighteen produce cards and expected digits",
     fn: () => {
-      const secretVegetables = ['Carrot', 'Potato', 'Tomato', 'Onion'];
+      const secretVegetables = ["Carrot", "Potato", "Tomato", "Onion"];
       const payload = createChallengePayload({
         secretVegetables,
-        secretLetters: ['X', 'R'],
+        secretLetters: ["X", "R"],
         saltValue: 5,
         gridSize: 10,
       });
 
       assert.equal(payload.vegetables.length, 18);
       assert.equal(payload.alphabetGrid.length, 10);
-      assert.ok(payload.alphabetGrid.includes('X'));
-      assert.ok(payload.alphabetGrid.includes('R'));
-      assert.ok(typeof payload.expectedDigitOne === 'string');
-      assert.ok(typeof payload.expectedDigitTwo === 'string');
+      assert.ok(payload.alphabetGrid.includes("X"));
+      assert.ok(payload.alphabetGrid.includes("R"));
+      assert.ok(typeof payload.expectedDigitOne === "string");
+      assert.ok(typeof payload.expectedDigitTwo === "string");
       assert.equal(countVisibleSecrets(payload, secretVegetables), 1);
     },
   },
   {
-    name: 'createChallengePayload uses enrolled fixed position for POSITION_SUM mode',
+    name: "createChallengePayload uses enrolled fixed position for POSITION_SUM mode",
     fn: () => {
       const payload = createChallengePayload({
-        secretVegetables: ['Carrot', 'Potato', 'Tomato', 'Onion'],
-        secretLetters: ['X', 'R'],
+        secretVegetables: ["Carrot", "Potato", "Tomato", "Onion"],
+        secretLetters: ["X", "R"],
         saltValue: 5,
         gridSize: 10,
-        formulaMode: 'POSITION_SUM',
+        formulaMode: "POSITION_SUM",
         positionPair: [1],
       });
 
-      assert.equal(payload.formulaMode, 'POSITION_SUM');
+      assert.equal(payload.formulaMode, "POSITION_SUM");
       assert.deepEqual(
         (payload.formulaHint.positions || []).map((item) => item.index),
-        [1]
+        [1],
       );
-      const result = Number(`${payload.expectedDigitOne}${payload.expectedDigitTwo}`);
+      const result = Number(
+        `${payload.expectedDigitOne}${payload.expectedDigitTwo}`,
+      );
       assert.ok(result <= 99);
-      assert.equal(countVisibleSecrets(payload, ['Carrot', 'Potato', 'Tomato', 'Onion']), 1);
+      assert.equal(
+        countVisibleSecrets(payload, ["Carrot", "Potato", "Tomato", "Onion"]),
+        1,
+      );
     },
   },
   {
-    name: 'createChallengePayload honors selected pair in PAIR_SUM mode',
+    name: "createChallengePayload honors selected pair in PAIR_SUM mode",
     fn: () => {
       const payload = createChallengePayload({
-        secretVegetables: ['Carrot', 'Potato', 'Tomato', 'Onion'],
-        secretLetters: ['X', 'R'],
+        secretVegetables: ["Carrot", "Potato", "Tomato", "Onion"],
+        secretLetters: ["X", "R"],
         saltValue: 5,
         gridSize: 10,
-        formulaMode: 'PAIR_SUM',
-        pairVegetables: ['Carrot', 'Tomato'],
+        formulaMode: "PAIR_SUM",
+        pairVegetables: ["Carrot", "Tomato"],
       });
 
-      assert.equal(payload.formulaMode, 'PAIR_SUM');
-      assert.deepEqual(payload.formulaHint.pairVegetables, ['Carrot', 'Tomato']);
-      const result = Number(`${payload.expectedDigitOne}${payload.expectedDigitTwo}`);
+      assert.equal(payload.formulaMode, "PAIR_SUM");
+      assert.deepEqual(payload.formulaHint.pairVegetables, [
+        "Carrot",
+        "Tomato",
+      ]);
+      const result = Number(
+        `${payload.expectedDigitOne}${payload.expectedDigitTwo}`,
+      );
       assert.ok(result <= 99);
-      assert.equal(countVisibleSecrets(payload, ['Carrot', 'Potato', 'Tomato', 'Onion']), 2);
+      assert.equal(
+        countVisibleSecrets(payload, ["Carrot", "Potato", "Tomato", "Onion"]),
+        2,
+      );
     },
   },
   {
-    name: 'createChallengePayload auto-randomizes pair in PAIR_SUM mode when pairVegetables is omitted',
+    name: "createChallengePayload auto-randomizes pair in PAIR_SUM mode when pairVegetables is omitted",
     fn: () => {
-      const secretVegetables = ['Carrot', 'Potato', 'Tomato', 'Onion'];
+      const secretVegetables = ["Carrot", "Potato", "Tomato", "Onion"];
       const payload = createChallengePayload({
         secretVegetables,
-        secretLetters: ['X', 'R'],
+        secretLetters: ["X", "R"],
         saltValue: 5,
         gridSize: 10,
-        formulaMode: 'PAIR_SUM',
+        formulaMode: "PAIR_SUM",
       });
 
-      assert.equal(payload.formulaMode, 'PAIR_SUM');
+      assert.equal(payload.formulaMode, "PAIR_SUM");
       assert.equal((payload.formulaHint.pairVegetables || []).length, 2);
       for (const name of payload.formulaHint.pairVegetables || []) {
         assert.ok(secretVegetables.includes(name));
       }
-      const result = Number(`${payload.expectedDigitOne}${payload.expectedDigitTwo}`);
+      const result = Number(
+        `${payload.expectedDigitOne}${payload.expectedDigitTwo}`,
+      );
       assert.ok(result <= 99);
       assert.equal(countVisibleSecrets(payload, secretVegetables), 2);
     },
   },
   {
-    name: 'detectHoneyPotAttempt flags direct unsalted input at secret letters',
+    name: "detectHoneyPotAttempt flags direct unsalted input at secret letters",
     fn: () => {
       const triggered = detectHoneyPotAttempt({
         secretNumber: 42,
-        secretLetters: ['X', 'R'],
-        inputs: { X: '4', R: '2' },
+        secretLetters: ["X", "R"],
+        inputs: { X: "4", R: "2" },
       });
       assert.equal(triggered, true);
+    },
+  },
+  {
+    name: "evaluateFraudRisk returns fallback when AI is disabled",
+    fn: async () => {
+      const result = await evaluateFraudRisk({
+        signals: { behaviorScore: 80, attemptCount: 1 },
+        context: { partnerId: "demo_partner", mode: "SHADOW" },
+      });
+
+      assert.equal(result.ok, false);
+      assert.equal(typeof result.latencyMs, "number");
+      assert.equal(result.fallback.action, "REVIEW");
+      assert.equal(result.fallback.riskScore, 50);
     },
   },
 ];

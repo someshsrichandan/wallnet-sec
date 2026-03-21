@@ -43,16 +43,29 @@ copy .env.example .env
 | `VISUAL_SESSION_TTL_MS`        | No            | `300000`                    | Visual-password session expiry (ms)                                                                           |
 | `VISUAL_MAX_ATTEMPTS`          | No            | `3`                         | Max verify attempts before lock                                                                               |
 | `AI_ENABLED`                   | No            | `false`                     | Enable AI integration features                                                                                |
-| `AI_PROVIDER`                  | No            | `openai`                    | LLM provider (currently `openai`)                                                                             |
+| `AI_PROVIDER`                  | No            | `openai`                    | LLM provider (`openai` or `gemini`)                                                                           |
 | `AI_API_KEY`                   | Conditionally | none                        | Required when `AI_ENABLED=true`                                                                               |
-| `AI_BASE_URL`                  | No            | `https://api.openai.com/v1` | LLM API base URL                                                                                              |
-| `AI_MODEL`                     | No            | `gpt-4o-mini`               | Model used for AI features                                                                                    |
+| `AI_BASE_URL`                  | No            | `https://api.openai.com/v1` | LLM API base URL for `AI_PROVIDER=openai`                                                                     |
+| `AI_MODEL`                     | No            | `gpt-4o-mini`               | Model used for AI features (for Gemini use values like `gemini-2.0-flash`)                                    |
 | `AI_TIMEOUT_MS`                | No            | `1500`                      | Per-request AI timeout in milliseconds                                                                        |
 | `AI_MAX_RETRIES`               | No            | `1`                         | Retry count for transient AI failures                                                                         |
 | `AI_FRAUD_SHADOW_MODE`         | No            | `true`                      | Compute AI fraud decision without enforcing                                                                   |
 | `AI_FRAUD_ENFORCEMENT_MODE`    | No            | `false`                     | Allow AI to influence enforcement logic                                                                       |
 | `AI_THREAT_SUMMARY_ENABLED`    | No            | `false`                     | Enable AI threat summarization feature                                                                        |
 | `AI_PARTNER_ASSISTANT_ENABLED` | No            | `false`                     | Enable partner AI assistant feature                                                                           |
+
+### Gemini SDK Configuration Example
+
+```env
+AI_ENABLED=true
+AI_PROVIDER=gemini
+AI_API_KEY=your-gemini-api-key
+AI_MODEL=gemini-2.0-flash
+AI_TIMEOUT_MS=2000
+AI_MAX_RETRIES=1
+AI_FRAUD_SHADOW_MODE=true
+AI_FRAUD_ENFORCEMENT_MODE=false
+```
 
 ## 4. Run
 

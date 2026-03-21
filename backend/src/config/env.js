@@ -241,15 +241,18 @@ const validateEnv = () => {
       errors.push("AI_MODEL must be configured when AI_ENABLED=true");
     }
 
-    if (!["openai"].includes(env.aiProvider)) {
-      errors.push("AI_PROVIDER currently supports only: openai");
+    if (!["openai", "gemini"].includes(env.aiProvider)) {
+      errors.push("AI_PROVIDER currently supports only: openai, gemini");
     }
 
     if (
+      env.aiProvider === "openai" &&
       !env.aiBaseUrl.startsWith("http://") &&
       !env.aiBaseUrl.startsWith("https://")
     ) {
-      errors.push("AI_BASE_URL must be a valid http/https URL");
+      errors.push(
+        "AI_BASE_URL must be a valid http/https URL for AI_PROVIDER=openai",
+      );
     }
   }
 

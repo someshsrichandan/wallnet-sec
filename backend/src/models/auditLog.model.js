@@ -26,6 +26,7 @@ const auditLogSchema = new Schema(
         "API_KEY_GENERATED",
         "API_KEY_ROTATED",
         "API_KEY_REVOKED",
+        "AI_FRAUD_ASSESSMENT",
       ],
       index: true,
     },

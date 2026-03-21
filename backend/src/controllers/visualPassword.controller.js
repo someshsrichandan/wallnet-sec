@@ -38,6 +38,7 @@ const {
   regenerateChallengeNumbers,
 } = require("../services/visualPassword.service");
 const { logEvent } = require("../services/auditLog.service");
+const { evaluateFraudRisk } = require("../services/aiGateway.service");
 const {
   analyzeBehavior,
   checkGeoVelocity,
@@ -173,6 +174,22 @@ const ensureEnrollmentOwnership = (credential, authUserId) => {
   if (credential.ownerUserId !== authUserId) {
     throw new HttpError(403, "You can only access your own visual profile");
   }
+};
+
+const deriveDeterministicRiskAction = ({
+  passed,
+  sessionStatus,
+  honeypotDetected,
+}) => {
+  if (honeypotDetected || sessionStatus === "LOCKED") {
+    return "BLOCK";
+  }
+
+  if (passed) {
+    return "ALLOW";
+  }
+
+  return "CHALLENGE";
 };
 
 const enroll = asyncHandler(async (req, res) => {
@@ -654,6 +671,62 @@ const verify = asyncHandler(async (req, res) => {
     req,
   }).catch(() => ({ anomaly: false, score: 100, factors: {} }));
 
+  const clientIp = req.ip || req.headers?.["x-forwarded-for"] || "";
+  const [geoVelocityResult, deviceTrustResult] = await Promise.all([
+    checkGeoVelocity({
+      partnerId: session.partnerId,
+      userId: session.userId,
+      currentIp: clientIp,
+      req,
+    }).catch(() => ({ flagged: false, distanceKm: 0, speedKmh: 0 })),
+    computeDeviceTrustScore({
+      partnerId: session.partnerId,
+      userId: session.userId,
+      requestFingerprint,
+      deviceFingerprint: "",
+    }).catch(() => ({ score: 50, factors: {} })),
+  ]);
+
+  const aiShadowEnabled = Boolean(
+    req.ai?.enabled && req.ai?.features?.fraudShadowMode,
+  );
+  let aiRiskResult = null;
+
+  if (aiShadowEnabled) {
+    aiRiskResult = await evaluateFraudRisk({
+      signals: {
+        behaviorScore: behaviorResult.score,
+        behaviorAnomaly: behaviorResult.anomaly,
+        honeypotDetected,
+        attemptCount: session.attemptCount,
+        maxAttempts: session.maxAttempts,
+        geoVelocityFlagged: Boolean(geoVelocityResult.flagged),
+        geoDistanceKm: Number(geoVelocityResult.distanceKm || 0),
+        geoSpeedKmh: Number(geoVelocityResult.speedKmh || 0),
+        deviceTrustScore: Number(deviceTrustResult.score || 0),
+      },
+      context: {
+        partnerId: session.partnerId,
+        userId: session.userId,
+        sessionToken: session.sessionToken,
+        requestId: req.requestId,
+        mode: "SHADOW",
+      },
+    }).catch((error) => ({
+      ok: false,
+      error: error.message,
+      latencyMs: 0,
+      promptVersion: "fraud-risk-v1",
+      fallback: {
+        riskScore: 50,
+        action: "REVIEW",
+        confidence: 0,
+        reasons: ["AI evaluation error, fallback used"],
+        flags: ["AI_FALLBACK"],
+      },
+    }));
+  }
+
   if (passed && !honeypotDetected) {
     session.status = "PASS";
     session.verifiedAt = new Date();
@@ -690,6 +763,13 @@ const verify = asyncHandler(async (req, res) => {
       metadata: {
         behaviorScore: behaviorResult.score,
         attemptCount: session.attemptCount,
+        aiShadowMode: aiShadowEnabled,
+        aiDecision:
+          aiRiskResult ?
+            aiRiskResult.ok ?
+              aiRiskResult.decision
+            : aiRiskResult.fallback
+          : undefined,
       },
     });
   } else {
@@ -710,7 +790,16 @@ const verify = asyncHandler(async (req, res) => {
         userId: session.userId,
         sessionToken,
         req,
-        metadata: { attemptCount: session.attemptCount },
+        metadata: {
+          attemptCount: session.attemptCount,
+          aiShadowMode: aiShadowEnabled,
+          aiDecision:
+            aiRiskResult ?
+              aiRiskResult.ok ?
+                aiRiskResult.decision
+              : aiRiskResult.fallback
+            : undefined,
+        },
       });
     } else {
       logEvent({
@@ -722,9 +811,47 @@ const verify = asyncHandler(async (req, res) => {
         metadata: {
           attemptCount: session.attemptCount,
           behaviorScore: behaviorResult.score,
+          aiShadowMode: aiShadowEnabled,
+          aiDecision:
+            aiRiskResult ?
+              aiRiskResult.ok ?
+                aiRiskResult.decision
+              : aiRiskResult.fallback
+            : undefined,
         },
       });
     }
+  }
+
+  const deterministicAction = deriveDeterministicRiskAction({
+    passed,
+    sessionStatus: session.status,
+    honeypotDetected,
+  });
+
+  if (aiShadowEnabled && aiRiskResult) {
+    const aiDecision =
+      aiRiskResult.ok ? aiRiskResult.decision : aiRiskResult.fallback;
+    const aiAction = String(aiDecision?.action || "REVIEW").toUpperCase();
+
+    logEvent({
+      action: "AI_FRAUD_ASSESSMENT",
+      partnerId: session.partnerId,
+      userId: session.userId,
+      sessionToken,
+      req,
+      metadata: {
+        mode: "SHADOW",
+        promptVersion: aiRiskResult.promptVersion,
+        latencyMs: aiRiskResult.latencyMs,
+        ok: aiRiskResult.ok,
+        error: aiRiskResult.ok ? undefined : aiRiskResult.error,
+        deterministicAction,
+        aiAction,
+        disagreedWithDeterministic: aiAction !== deterministicAction,
+        decision: aiDecision,
+      },
+    });
   }
 
   await session.save();
@@ -768,6 +895,15 @@ const verify = asyncHandler(async (req, res) => {
   const riskFlags = [];
   if (behaviorResult.anomaly) riskFlags.push("BEHAVIOR_ANOMALY");
   if (honeypotDetected) riskFlags.push("HONEYPOT");
+  if (geoVelocityResult.flagged) riskFlags.push("GEO_VELOCITY");
+  if (deviceTrustResult.score < 30) riskFlags.push("LOW_DEVICE_TRUST");
+  if (aiShadowEnabled && aiRiskResult) {
+    const aiDecision =
+      aiRiskResult.ok ? aiRiskResult.decision : aiRiskResult.fallback;
+    if (Number(aiDecision?.riskScore || 0) >= 70) {
+      riskFlags.push("AI_HIGH_RISK");
+    }
+  }
 
   res.json({
     result: session.status === "PASS" ? "PASS" : "FAIL",
@@ -783,6 +919,19 @@ const verify = asyncHandler(async (req, res) => {
     partnerRedirectUrl: partnerRedirectUrl || undefined,
     behaviorScore: behaviorResult.score,
     riskFlags: riskFlags.length ? riskFlags : undefined,
+    aiShadow:
+      aiShadowEnabled && aiRiskResult ?
+        {
+          enabled: true,
+          mode: "SHADOW",
+          promptVersion: aiRiskResult.promptVersion,
+          latencyMs: aiRiskResult.latencyMs,
+          fallbackUsed: !aiRiskResult.ok,
+          decision:
+            aiRiskResult.ok ? aiRiskResult.decision : aiRiskResult.fallback,
+          deterministicAction,
+        }
+      : undefined,
     expiresAt: session.expiresAt,
   });
 });

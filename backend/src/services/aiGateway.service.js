@@ -1,6 +1,8 @@
 const env = require("../config/env");
 const { redactSensitiveObject } = require("../utils/redact");
 
+let geminiClient = null;
+
 const extractJsonObject = (text) => {
   const trimmed = String(text || "").trim();
   if (!trimmed) {
@@ -97,6 +99,79 @@ const requestOpenAiJson = async ({
   }
 };
 
+const getGeminiClient = () => {
+  if (geminiClient) {
+    return geminiClient;
+  }
+
+  // Loaded lazily so projects that only use OpenAI do not require Gemini SDK at runtime.
+  // eslint-disable-next-line global-require
+  const { GoogleGenAI } = require("@google/genai");
+  geminiClient = new GoogleGenAI({ apiKey: env.aiApiKey });
+  return geminiClient;
+};
+
+const extractGeminiText = (response) => {
+  if (!response) {
+    return "";
+  }
+
+  if (typeof response.text === "function") {
+    const value = response.text();
+    return typeof value === "string" ? value : "";
+  }
+
+  if (typeof response.text === "string") {
+    return response.text;
+  }
+
+  const candidate = response.candidates?.[0];
+  const parts = candidate?.content?.parts;
+  if (Array.isArray(parts)) {
+    return parts
+      .map((part) => String(part?.text || ""))
+      .join("\n")
+      .trim();
+  }
+
+  return "";
+};
+
+const requestGeminiJson = async ({
+  systemPrompt,
+  userPrompt,
+  timeoutMs = env.aiTimeoutMs,
+}) => {
+  const client = getGeminiClient();
+
+  let timeoutHandle = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new Error("Gemini request timed out")),
+      timeoutMs,
+    );
+  });
+
+  const requestPromise = client.models.generateContent({
+    model: env.aiModel,
+    contents: userPrompt,
+    config: {
+      systemInstruction: systemPrompt,
+      responseMimeType: "application/json",
+      temperature: 0.1,
+    },
+  });
+
+  try {
+    const response = await Promise.race([requestPromise, timeoutPromise]);
+    return extractGeminiText(response);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+};
+
 const callJsonModel = async ({ systemPrompt, userPrompt }) => {
   if (!env.aiEnabled) {
     return {
@@ -114,11 +189,15 @@ const callJsonModel = async ({ systemPrompt, userPrompt }) => {
     attempt += 1;
 
     try {
-      if (env.aiProvider !== "openai") {
-        throw new Error(`Unsupported AI provider: ${env.aiProvider}`);
-      }
+      const content =
+        env.aiProvider === "openai" ?
+          await requestOpenAiJson({ systemPrompt, userPrompt })
+        : env.aiProvider === "gemini" ?
+          await requestGeminiJson({ systemPrompt, userPrompt })
+        : (() => {
+            throw new Error(`Unsupported AI provider: ${env.aiProvider}`);
+          })();
 
-      const content = await requestOpenAiJson({ systemPrompt, userPrompt });
       return {
         ok: true,
         raw: extractJsonObject(content),

@@ -12,7 +12,6 @@ const navLinks = [
   { href: "/how-it-works", label: "How It Works" },
   { href: "/developers", label: "Developers" },
   { href: "/docs", label: "API Docs" },
-  { href: "/partner-live", label: "Live Demo" },
   { href: "/contact", label: "Contact" },
   { href: "/admin", label: "Admin" },
 ];
@@ -53,17 +52,17 @@ export function SiteNav() {
         <div className="hidden items-center gap-1 sm:flex">
           {navLinks.map(({ href, label }) => {
             const isActive =
-              href === "/"
-                ? pathname === "/"
-                : pathname === href || pathname.startsWith(href + "/");
+              href === "/" ?
+                pathname === "/"
+              : pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
                 href={href}
                 className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                  isActive
-                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                  isActive ?
+                    "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                 }`}
               >
                 {label}
@@ -81,7 +80,9 @@ export function SiteNav() {
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-label={menuOpen ? "Close menu" : "Open menu"}
           >
-            {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            {menuOpen ?
+              <X className="h-4 w-4" />
+            : <Menu className="h-4 w-4" />}
           </button>
         </div>
       </nav>
@@ -91,16 +92,18 @@ export function SiteNav() {
         <div className="border-t border-slate-200/80 bg-white px-4 pb-4 pt-2 dark:border-slate-800/80 dark:bg-slate-950 sm:hidden">
           {navLinks.map(({ href, label }) => {
             const isActive =
-              href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+              href === "/" ?
+                pathname === "/"
+              : pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
                 href={href}
                 onClick={() => setMenuOpen(false)}
                 className={`block rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
-                  isActive
-                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                  isActive ?
+                    "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                  : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
                 }`}
               >
                 {label}

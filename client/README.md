@@ -1,6 +1,7 @@
 ﻿# Client App (Next.js)
 
 Frontend app for:
+
 - problem statement dashboard
 - visual-password demo and partner flow simulation
 - submission form
@@ -21,26 +22,31 @@ npm install
 ## 3. Environment Setup
 
 1. Copy env template:
+
 ```bash
 copy .env.local.example .env.local
 ```
+
 2. Update values in `.env.local`.
 
 ### Environment Variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `BACKEND_API_BASE_URL` | Recommended | `http://localhost:3000/api` | Server-side proxy target used by Next route handlers |
-| `NEXT_PUBLIC_API_BASE_URL` | Optional fallback | `http://localhost:3000/api` | Fallback for proxy base resolution |
-| `PORT` | Optional | `3001` in example | Client dev/prod port |
+| Variable                   | Required          | Default                     | Description                                          |
+| -------------------------- | ----------------- | --------------------------- | ---------------------------------------------------- |
+| `BACKEND_API_BASE_URL`     | Recommended       | `http://localhost:3000/api` | Server-side proxy target used by Next route handlers |
+| `NEXT_PUBLIC_API_BASE_URL` | Optional fallback | `http://localhost:3000/api` | Fallback for proxy base resolution                   |
+| `PORT`                     | Optional          | `3001` in example           | Client dev/prod port                                 |
 
 ## 4. Run
 
 - Development:
+
 ```bash
 npm run dev
 ```
+
 - Production build:
+
 ```bash
 npm run build
 npm start
@@ -50,7 +56,6 @@ npm start
 
 - `/` main dashboard
 - `/demo` visual password challenge test
-- `/partner-demo` partner-side login simulation
 - `/partner-live` production-style partner redirect simulator
 - `/visual-auth` visual authentication portal route (redirect target)
 - `/partner-live/callback` partner callback verification route
@@ -85,6 +90,7 @@ These Next.js route handlers forward to backend:
 ## 8. Validation
 
 - Lint:
+
 ```bash
 npm run lint
 ```
