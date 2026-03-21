@@ -1,6 +1,7 @@
 const env = require("../config/env");
 const HttpError = require("../utils/httpError");
 const PartnerKey = require("../models/partnerKey.model");
+const { hashDeterministic } = require("../utils/fieldEncryption");
 
 /**
  * Razorpay-style partner authentication middleware.
@@ -89,7 +90,7 @@ module.exports = async (req, _res, next) => {
   const apiKey =
     apiKeyRaw.includes(":") ?
       apiKeyRaw.split(":").slice(-1)[0].trim()
-    : apiKeyRaw;
+      : apiKeyRaw;
 
   let accepted =
     directSet.has(apiKeyRaw) ||
@@ -111,8 +112,16 @@ module.exports = async (req, _res, next) => {
   // Check database-stored API keys (legacy apiKey field or new keyId lookup)
   if (!accepted) {
     try {
-      // Try matching by legacy apiKey field first, then by keyId
-      const query = { active: true, $or: [{ apiKey: apiKeyRaw }, { keyId: apiKeyRaw }] };
+      const query = {
+        $or: [
+          { apiKeyHash: hashDeterministic(apiKeyRaw) },
+          { apiKeyHash: hashDeterministic(apiKey) },
+          // Legacy fallback for old plaintext rows before migration
+          { apiKey: apiKeyRaw },
+          { apiKey },
+        ],
+        active: true,
+      };
       if (partnerId && partnerId !== "*") {
         query.partnerId = partnerId;
       }

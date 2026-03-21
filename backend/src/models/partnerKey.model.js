@@ -1,14 +1,24 @@
 const { Schema, model } = require("mongoose");
+<<<<<<< HEAD
 const { randomBytes } = require("crypto");
 const bcrypt = require("bcrypt");
 
 const BCRYPT_ROUNDS = 10;
+=======
+const { randomUUID, randomBytes } = require("crypto");
+const {
+  decryptString,
+  encryptString,
+  hashDeterministic,
+} = require("../utils/fieldEncryption");
+>>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
 
 const partnerKeySchema = new Schema(
   {
     partnerId: { type: String, required: true, trim: true, index: true },
     ownerUserId: { type: String, required: true, trim: true, index: true },
     label: { type: String, default: "", trim: true },
+<<<<<<< HEAD
 
     // ── Razorpay-style key_id + key_secret ──────────────────────────
     // keyId is the public identifier (always visible, used in Basic auth)
@@ -24,6 +34,12 @@ const partnerKeySchema = new Schema(
     // New DB-generated keys do NOT use this field
     apiKey: { type: String, default: "", index: true, sparse: true },
 
+=======
+    apiKey: { type: String, default: "" },
+    apiKeyEncrypted: { type: Schema.Types.Mixed, required: true },
+    apiKeyHash: { type: String, required: true, unique: true, index: true },
+    apiKeyPreview: { type: String, default: "", trim: true },
+>>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
     mode: {
       type: String,
       enum: ["test", "live"],
@@ -41,6 +57,21 @@ const partnerKeySchema = new Schema(
 
 partnerKeySchema.index({ partnerId: 1, mode: 1 });
 partnerKeySchema.index({ ownerUserId: 1, partnerId: 1 });
+
+partnerKeySchema.methods.setApiKey = function (apiKeyValue) {
+  const apiKey = String(apiKeyValue || "").trim();
+  this.apiKey = "";
+  this.apiKeyEncrypted = encryptString(apiKey);
+  this.apiKeyHash = hashDeterministic(apiKey);
+  this.apiKeyPreview = apiKey ? apiKey.slice(-8) : "";
+};
+
+partnerKeySchema.methods.getApiKey = function () {
+  if (this.apiKeyEncrypted) {
+    return decryptString(this.apiKeyEncrypted);
+  }
+  return String(this.apiKey || "");
+};
 
 /**
  * Generate a Razorpay-style key pair.
