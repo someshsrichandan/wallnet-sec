@@ -69,6 +69,141 @@ For a complete setup across all demo apps, read the full guide:
 - Verify: user submits challenge response.
 - Callback + Consume Result: partner validates signed outcome server-side.
 
+## How To Test (End-to-End, Code-Backed)
+
+This walkthrough uses `demo-bank` because it implements the full user journey:
+
+- register user,
+- start login,
+- redirect to hosted verify page,
+- callback finalize,
+- open partner dashboard only after signature validation.
+
+### 1. Start Required Apps
+
+Run these three apps in separate terminals:
+
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+```bash
+cd client
+npm install
+npm run dev
+```
+
+```bash
+cd demo-bank
+npm install
+npm run dev -- --port 3002
+```
+
+Open `http://localhost:3002`.
+
+### 2. Configure Demo-Bank Environment
+
+Create `demo-bank/.env.local` from `demo-bank/.env.local.example`.
+
+For local testing, verify these values:
+
+- `DEMO_BANK_PUBLIC_ORIGIN=http://localhost:3002`
+- `VISUAL_BACKEND_API_BASE_URL=http://localhost:3000/api`
+- `VISUAL_VERIFY_ORIGIN=http://localhost:3001`
+- `VISUAL_PARTNER_ID` matches backend partner id (default examples use `hdfc_bank`)
+- either Razorpay-style keys (`VISUAL_KEY_ID` + `VISUAL_KEY_SECRET`) or legacy `VISUAL_API_KEY`
+
+Also ensure backend callback policy allows demo-bank callback origin (see backend env for callback allowlist behavior).
+
+### 3. Signup (Demo-Bank)
+
+1. Go to `http://localhost:3002/register`.
+2. Submit full name, email, phone, password.
+
+What happens in code:
+
+- page posts to `POST /api/demo-bank/register`
+- route creates local bank user
+- route tries `initVisualEnroll(...)` and returns `enrollUrl` when successful
+
+If `enrollUrl` is returned, click the "Continue to Set Up Visual Password" button.
+
+### 4. Enrollment (Hosted On Client App)
+
+The register flow redirects to client enrollment route:
+
+- `/enroll/:enrollToken` on `client` app
+
+On that page:
+
+1. Select exactly 4 secret items.
+2. Enter 2 different secret letters.
+3. Choose formula mode and alphabet mode.
+4. Submit.
+
+What happens in code:
+
+- page loads enroll session via `GET /api/visual-password/enroll-session/:enrollToken`
+- page submits via `POST /api/visual-password/enroll-session/:enrollToken/submit`
+- on success it redirects to partner callback URL from the enroll session
+
+For demo-bank, callback is:
+
+- `GET /api/demo-bank/enroll/callback?result=ENROLLED&enrollToken=...`
+
+That callback redirects to:
+
+- `/login?enrolled=1` (or `/dashboard?enrolled=1` if already logged in)
+
+### 5. Login + Verification
+
+1. Open `http://localhost:3002/login`.
+2. Sign in with the registered email/password.
+
+What happens in code:
+
+- login form posts to `POST /api/demo-bank/login/start`
+- route verifies local email/password
+- route calls `initVisualAuth(...)`
+- response returns `verifyUrl` (built from `VISUAL_VERIFY_ORIGIN + verifyPath`)
+- browser redirects to hosted verify page (`/verify/:sessionToken` on `client`)
+
+On verify page:
+
+- challenge is loaded via `GET /api/visual-password/v1/challenge/:sessionToken`
+- answer is submitted via `POST /api/visual-password/v1/verify`
+
+### 6. Callback Finalize (Partner Backend)
+
+After PASS/FAIL, hosted verify redirects back to demo-bank callback:
+
+- `GET /api/demo-bank/login/finalize?...`
+
+Finalize route behavior (implemented):
+
+- validates pending login context from cookie (`state`, `sessionToken`, partner/user IDs)
+- requires callback `result=PASS` and `signature`
+- calls `POST /visual-password/v1/partner/consume-result` server-to-server
+- creates bank session only after consume-result passes
+
+Success result:
+
+- redirected to `/dashboard?verified=1`
+
+Failure result:
+
+- redirected back to `/login?error=...`
+
+### 7. Quick Negative Checks
+
+Use these to confirm guardrails:
+
+1. Try wrong login password at `/login` -> you get invalid credential error before visual step.
+2. Try login for a user without valid visual profile -> route returns `needsEnroll` and redirects to enrollment URL.
+3. Complete visual challenge with a non-PASS outcome -> finalize redirects to `/login?error=...` and no bank session is created.
+
 ## Detailed Technical Flow
 
 This section maps directly to current backend implementation in `backend/src/routes/visualPassword.routes.js` and `backend/src/controllers/visualPassword.controller.js`.
