@@ -1,5 +1,6 @@
 const VisualSession = require("../models/visualSession.model");
 const VisualCredential = require("../models/visualCredential.model");
+const PartnerKey = require("../models/partnerKey.model");
 const asyncHandler = require("../utils/asyncHandler");
 const {
   assertRequiredString,
@@ -14,10 +15,43 @@ const {
   queryLogs,
 } = require("../services/auditLog.service");
 
+const getOwnedPartnerIds = async (ownerUserId) => {
+  if (!ownerUserId) {
+    return [];
+  }
+
+  return PartnerKey.distinct("partnerId", { ownerUserId, active: true });
+};
+
+const buildOwnerPartnerScope = (ownerUserId, partnerIds = []) => {
+  const scopedPartners =
+    Array.isArray(partnerIds) ?
+      partnerIds.filter((item) => typeof item === "string" && item.trim())
+    : [];
+
+  if (!ownerUserId && scopedPartners.length === 0) {
+    return {};
+  }
+
+  if (!ownerUserId) {
+    return { partnerId: { $in: scopedPartners } };
+  }
+
+  if (!scopedPartners.length) {
+    return { ownerUserId };
+  }
+
+  return {
+    $or: [{ ownerUserId }, { partnerId: { $in: scopedPartners } }],
+  };
+};
+
 // ─── Dashboard Stats ───────────────────────────────────────────────────────
 
 const getDashboardStats = asyncHandler(async (req, res) => {
   const ownerUserId = req.auth.sub;
+  const ownedPartnerIds = await getOwnedPartnerIds(ownerUserId);
+  const ownerPartnerScope = buildOwnerPartnerScope(ownerUserId, ownedPartnerIds);
   const now = new Date();
   const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -34,35 +68,47 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     avgVerificationTime,
     auditStats,
   ] = await Promise.all([
-    VisualSession.countDocuments({ ownerUserId }),
+    VisualSession.countDocuments(ownerPartnerScope),
     VisualSession.countDocuments({
-      ownerUserId,
+      ...ownerPartnerScope,
       status: "PENDING",
       expiresAt: { $gt: now },
     }),
     VisualSession.countDocuments({
-      ownerUserId,
+      ...ownerPartnerScope,
       status: "PASS",
       verifiedAt: { $gte: last24h },
     }),
     VisualSession.countDocuments({
-      ownerUserId,
+      ...ownerPartnerScope,
       status: "FAIL",
       lastAttemptAt: { $gte: last24h },
     }),
     VisualSession.countDocuments({
-      ownerUserId,
+      ...ownerPartnerScope,
       status: "LOCKED",
       updatedAt: { $gte: last24h },
     }),
-    VisualCredential.countDocuments({ ownerUserId, active: true }),
-    VisualSession.countDocuments({ ownerUserId, honeypotDetected: true }),
+    VisualCredential.countDocuments({
+      ...ownerPartnerScope,
+      active: true,
+    }),
+    VisualSession.countDocuments({
+      ...ownerPartnerScope,
+      honeypotDetected: true,
+    }),
     VisualSession.aggregate([
-      { $match: { ownerUserId } },
+      { $match: ownerPartnerScope },
       { $group: { _id: "$status", count: { $sum: 1 } } },
     ]),
     VisualSession.aggregate([
-      { $match: { ownerUserId, status: "PASS", verifiedAt: { $ne: null } } },
+      {
+        $match: {
+          ...ownerPartnerScope,
+          status: "PASS",
+          verifiedAt: { $ne: null },
+        },
+      },
       {
         $project: {
           verifyDurationMs: { $subtract: ["$verifiedAt", "$createdAt"] },
@@ -70,7 +116,11 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       },
       { $group: { _id: null, avgMs: { $avg: "$verifyDurationMs" } } },
     ]),
-    getStats({ userId: ownerUserId, since: last7d }),
+    getStats({
+      ownerUserId,
+      partnerIds: ownedPartnerIds,
+      since: last7d,
+    }),
   ]);
 
   const statusMap = {};
@@ -112,13 +162,19 @@ const getDashboardStats = asyncHandler(async (req, res) => {
 
 const getThreatFeed = asyncHandler(async (req, res) => {
   const ownerUserId = req.auth.sub;
+  const partnerIds = await getOwnedPartnerIds(ownerUserId);
   const limit =
     req.query.limit ?
       assertInteger("limit", req.query.limit, { min: 1, max: 100 })
     : 30;
   const since = req.query.since || undefined;
 
-  const threats = await getRecentThreats({ userId: ownerUserId, limit, since });
+  const threats = await getRecentThreats({
+    ownerUserId,
+    partnerIds,
+    limit,
+    since,
+  });
 
   res.json({
     threats,
@@ -131,13 +187,19 @@ const getThreatFeed = asyncHandler(async (req, res) => {
 
 const getTimelineData = asyncHandler(async (req, res) => {
   const ownerUserId = req.auth.sub;
+  const partnerIds = await getOwnedPartnerIds(ownerUserId);
   const hours =
     req.query.hours ?
       assertInteger("hours", req.query.hours, { min: 1, max: 168 })
     : 24;
   const partnerId = req.query.partnerId || undefined;
 
-  const timeline = await getTimeline({ hours, partnerId, userId: ownerUserId });
+  const timeline = await getTimeline({
+    hours,
+    partnerId,
+    ownerUserId,
+    partnerIds,
+  });
 
   res.json({
     timeline,
@@ -150,6 +212,7 @@ const getTimelineData = asyncHandler(async (req, res) => {
 
 const getAuditLogs = asyncHandler(async (req, res) => {
   const ownerUserId = req.auth.sub;
+  const partnerIds = await getOwnedPartnerIds(ownerUserId);
   const { limit, skip } = parsePagination(req.query, {
     defaultLimit: 50,
     maxLimit: 200,
@@ -160,7 +223,8 @@ const getAuditLogs = asyncHandler(async (req, res) => {
 
   const result = await queryLogs({
     partnerId,
-    userId: ownerUserId,
+    ownerUserId,
+    partnerIds,
     action,
     severity,
     limit,
@@ -174,6 +238,8 @@ const getAuditLogs = asyncHandler(async (req, res) => {
 
 const getSessionAnalytics = asyncHandler(async (req, res) => {
   const ownerUserId = req.auth.sub;
+  const ownedPartnerIds = await getOwnedPartnerIds(ownerUserId);
+  const ownerPartnerScope = buildOwnerPartnerScope(ownerUserId, ownedPartnerIds);
   const days =
     req.query.days ?
       assertInteger("days", req.query.days, { min: 1, max: 90 })
@@ -182,7 +248,7 @@ const getSessionAnalytics = asyncHandler(async (req, res) => {
 
   const [byFormulaMode, byCatalogType, byDay, topPartners] = await Promise.all([
     VisualSession.aggregate([
-      { $match: { ownerUserId, createdAt: { $gte: since } } },
+      { $match: { ...ownerPartnerScope, createdAt: { $gte: since } } },
       {
         $group: {
           _id: "$formulaMode",
@@ -192,11 +258,11 @@ const getSessionAnalytics = asyncHandler(async (req, res) => {
       },
     ]),
     VisualSession.aggregate([
-      { $match: { ownerUserId, createdAt: { $gte: since } } },
+      { $match: { ...ownerPartnerScope, createdAt: { $gte: since } } },
       { $group: { _id: "$catalogType", count: { $sum: 1 } } },
     ]),
     VisualSession.aggregate([
-      { $match: { ownerUserId, createdAt: { $gte: since } } },
+      { $match: { ...ownerPartnerScope, createdAt: { $gte: since } } },
       {
         $group: {
           _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
@@ -209,7 +275,7 @@ const getSessionAnalytics = asyncHandler(async (req, res) => {
       { $sort: { _id: 1 } },
     ]),
     VisualSession.aggregate([
-      { $match: { ownerUserId, createdAt: { $gte: since } } },
+      { $match: { ...ownerPartnerScope, createdAt: { $gte: since } } },
       { $group: { _id: "$partnerId", count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $limit: 10 },

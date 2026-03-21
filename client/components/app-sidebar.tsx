@@ -13,6 +13,7 @@ import {
   Search,
   HelpCircle,
   FileText,
+  PhoneCall,
 } from "lucide-react";
 
 import { NavDocuments } from "@/components/nav-documents";
@@ -81,6 +82,11 @@ const data = {
       name: "API Documentation",
       url: "/admin/dashboard/docs",
       icon: Database,
+    },
+    {
+      name: "AI Calling Agent",
+      url: "/admin/dashboard/ai-calling-agent",
+      icon: PhoneCall,
     },
     {
       name: "Audit Reports",

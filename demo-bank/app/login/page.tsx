@@ -183,6 +183,24 @@ function LoginPageContent() {
             {isSubmitting ? "Verifying credentials…" : "Sign In"}
           </button>
 
+          {/* Forgot visual password */}
+          <div style={{ textAlign: "center", marginTop: "0.25rem" }}>
+            <Link
+              href={`/forgot${email ? `?email=${encodeURIComponent(email)}` : ""}`}
+              style={{
+                fontSize: "0.82rem",
+                color: "#6366f1",
+                fontWeight: 600,
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.25rem",
+              }}
+            >
+              🔓 Forgot Visual Password?
+            </Link>
+          </div>
+
           <div
             style={{
               display: "flex",
@@ -202,6 +220,16 @@ function LoginPageContent() {
               }}
             >
               Open Account
+            </Link>
+          </div>
+
+          {/* Agent link */}
+          <div style={{ textAlign: "center", paddingTop: "0.25rem" }}>
+            <Link
+              href="/agent"
+              style={{ fontSize: "0.75rem", color: "#94a3b8", textDecoration: "none" }}
+            >
+              🎧 Bank Agent? Use Recovery Portal
             </Link>
           </div>
 

@@ -23,6 +23,9 @@ const SEVERITY_MAP = {
   API_KEY_ROTATED: "INFO",
   API_KEY_REVOKED: "WARN",
   AI_FRAUD_ASSESSMENT: "INFO",
+  USER_SIGNUP: "INFO",
+  USER_LOGIN_SUCCESS: "INFO",
+  USER_LOGIN_FAILURE: "WARN",
 };
 
 const MAX_METADATA_CHARS = 16_000;
@@ -42,12 +45,31 @@ const sanitizeMetadata = (metadata) => {
   };
 };
 
+const applyOwnerFilter = (filter, ownerUserId, userId, partnerIds = []) => {
+  if (ownerUserId) {
+    const scopedPartners = Array.isArray(partnerIds)
+      ? partnerIds.filter((item) => typeof item === "string" && item.trim())
+      : [];
+    const ownerScope = [{ ownerUserId }, { userId: ownerUserId }];
+    if (scopedPartners.length) {
+      ownerScope.push({ partnerId: { $in: scopedPartners } });
+    }
+    filter.$or = ownerScope;
+    return;
+  }
+
+  if (userId) {
+    filter.userId = userId;
+  }
+};
+
 /**
  * Log a security-relevant event to the audit trail.
  */
 const logEvent = async ({
   action,
   partnerId,
+  ownerUserId,
   userId,
   sessionToken,
   req,
@@ -62,11 +84,18 @@ const logEvent = async ({
     const requestId = req?.requestId || req?.headers?.["x-request-id"] || "";
     const safeMetadata = sanitizeMetadata(metadata || {});
     const fingerprint = safeMetadata?.fingerprint || "";
+    const resolvedOwnerUserId =
+      ownerUserId ||
+      req?.auth?.sub ||
+      req?.partnerKeyOwnerId ||
+      safeMetadata?.ownerUserId ||
+      "";
 
     await AuditLog.create({
       action,
       severity,
       partnerId: partnerId || "",
+      ownerUserId: resolvedOwnerUserId,
       userId: userId || "",
       sessionToken: sessionToken || "",
       ip: typeof ip === "string" ? ip : String(ip || ""),
@@ -88,6 +117,8 @@ const logEvent = async ({
  */
 const queryLogs = async ({
   partnerId,
+  partnerIds,
+  ownerUserId,
   userId,
   action,
   severity,
@@ -96,7 +127,7 @@ const queryLogs = async ({
 } = {}) => {
   const filter = {};
   if (partnerId) filter.partnerId = partnerId;
-  if (userId) filter.userId = userId;
+  applyOwnerFilter(filter, ownerUserId, userId, partnerIds);
   if (action) filter.action = action;
   if (severity) filter.severity = severity;
 
@@ -115,10 +146,10 @@ const queryLogs = async ({
 /**
  * Get aggregated stats for the dashboard.
  */
-const getStats = async ({ partnerId, userId, since } = {}) => {
+const getStats = async ({ partnerId, partnerIds, ownerUserId, userId, since } = {}) => {
   const match = {};
   if (partnerId) match.partnerId = partnerId;
-  if (userId) match.userId = userId;
+  applyOwnerFilter(match, ownerUserId, userId, partnerIds);
   if (since) match.createdAt = { $gte: new Date(since) };
 
   const pipeline = [
@@ -139,9 +170,9 @@ const getStats = async ({ partnerId, userId, since } = {}) => {
 /**
  * Get recent critical/warning events for live threat feed.
  */
-const getRecentThreats = async ({ limit = 20, since, userId } = {}) => {
+const getRecentThreats = async ({ limit = 20, since, partnerIds, ownerUserId, userId } = {}) => {
   const filter = { severity: { $in: ["WARN", "CRITICAL"] } };
-  if (userId) filter.userId = userId;
+  applyOwnerFilter(filter, ownerUserId, userId, partnerIds);
   if (since) filter.createdAt = { $gte: new Date(since) };
 
   return AuditLog.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
@@ -150,11 +181,11 @@ const getRecentThreats = async ({ limit = 20, since, userId } = {}) => {
 /**
  * Get hourly event counts for the last N hours (for dashboard sparklines).
  */
-const getTimeline = async ({ hours = 24, partnerId, userId } = {}) => {
+const getTimeline = async ({ hours = 24, partnerId, partnerIds, ownerUserId, userId } = {}) => {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000);
   const match = { createdAt: { $gte: since } };
   if (partnerId) match.partnerId = partnerId;
-  if (userId) match.userId = userId;
+  applyOwnerFilter(match, ownerUserId, userId, partnerIds);
 
   return AuditLog.aggregate([
     { $match: match },

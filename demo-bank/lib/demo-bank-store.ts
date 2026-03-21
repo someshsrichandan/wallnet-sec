@@ -1,4 +1,4 @@
-﻿import { Schema, model, models } from "mongoose";
+import { Schema, model, models } from "mongoose";
 
 import { connectDB } from "@/lib/db";
 import type { DemoBankUser, VisualProfile } from "@/lib/types";
@@ -25,6 +25,8 @@ const userSchema = new Schema(
     fullName:       { type: String, required: true },
     email:          { type: String, required: true, unique: true, index: true },
     passwordHash:   { type: String, required: true },
+    phone:          { type: String, required: false, default: "" },
+    accountNumber:  { type: String, required: false, default: "", index: true },
     visualEnabled:  { type: Boolean, required: true, default: false },
     visualProfile:  { type: visualProfileSchema, required: false },
     createdAt:      { type: String, required: true },
@@ -80,6 +82,8 @@ export const createUser = async (input: {
   fullName: string;
   passwordHash: string;
   partnerUserId: string;
+  phone?: string;
+  accountNumber?: string;
   visualProfile?: VisualProfile;
 }): Promise<DemoBankUser> => {
   await connectDB();
@@ -91,6 +95,8 @@ export const createUser = async (input: {
     fullName:      input.fullName,
     email:         input.email.toLowerCase().trim(),
     passwordHash:  input.passwordHash,
+    phone:         input.phone || "",
+    accountNumber: input.accountNumber || "",
     visualEnabled: false,
     visualProfile: input.visualProfile ?? undefined,
     createdAt:     now,
@@ -115,3 +121,21 @@ export const updateUserVisualEnabled = async (
   if (!doc) throw new Error(`DemoBankUser ${id} not found`);
   return clean(doc);
 };
+
+export const findUserByAccountNumber = async (accountNumber: string): Promise<DemoBankUser | null> => {
+  await connectDB();
+  const doc = await getModel()
+    .findOne({ accountNumber: accountNumber.trim() })
+    .lean() as Record<string, unknown> | null;
+  return doc ? clean(doc) : null;
+};
+
+export const getAllUsers = async (): Promise<DemoBankUser[]> => {
+  await connectDB();
+  const docs = await getModel()
+    .find({})
+    .sort({ createdAt: -1 })
+    .lean() as Record<string, unknown>[];
+  return docs.map(clean);
+};
+
