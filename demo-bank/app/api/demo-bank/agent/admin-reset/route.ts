@@ -2,10 +2,21 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 
 import {
-  findUserByAccountNumber,
-  findUserByPartnerUserId,
-  findUserByEmail,
+  findUserByAccountNumberForOwner,
+  findUserByAccountNumberForPartnerIdsWithoutOwner,
+  findUserByAccountNumberWithoutOwner,
+  findUserByEmailForPartnerIdsWithoutOwner,
+  findUserByEmailWithoutOwner,
+  findUserByPartnerUserIdForOwner,
+  findUserByPartnerUserIdForPartnerIdsWithoutOwner,
+  findUserByPartnerUserIdWithoutOwner,
+  findUserByEmailForOwner,
 } from "@/lib/demo-bank-store";
+import {
+  getAdminOwnerFromProxyHeaders,
+  getAdminPartnerIdsFromProxyHeaders,
+  unauthorizedAdminProxy,
+} from "@/lib/admin-proxy-auth";
 import { initVisualEnroll, VisualApiError } from "@/lib/visual-api";
 import { sendReenrollLinkEmail } from "@/lib/email-service";
 
@@ -23,6 +34,12 @@ export async function OPTIONS() {
 
 export async function POST(request: Request) {
   try {
+    const ownerUserId = getAdminOwnerFromProxyHeaders(request);
+    const partnerIds = getAdminPartnerIdsFromProxyHeaders(request);
+    if (!ownerUserId) {
+      return unauthorizedAdminProxy();
+    }
+
     const body = (await request.json()) as { query: string; triggeredBy?: string };
     const query = String(body.query || "").trim();
     const triggeredBy = String(body.triggeredBy || "Admin Console").trim();
@@ -34,10 +51,28 @@ export async function POST(request: Request) {
     // Find user — try account number first (6 digits), then partnerUserId, then email
     let user =
       /^\d{6}$/.test(query)
-        ? await findUserByAccountNumber(query)
+        ? await findUserByAccountNumberForOwner(query, ownerUserId)
         : null;
-    if (!user) user = await findUserByPartnerUserId(query);
-    if (!user) user = await findUserByEmail(query);
+    if (!user) user = await findUserByPartnerUserIdForOwner(query, ownerUserId);
+    if (!user) user = await findUserByEmailForOwner(query, ownerUserId);
+
+    if (!user) {
+      user =
+        /^\d{6}$/.test(query)
+          ? await findUserByAccountNumberForPartnerIdsWithoutOwner(query, partnerIds)
+          : null;
+      if (!user) user = await findUserByPartnerUserIdForPartnerIdsWithoutOwner(query, partnerIds);
+      if (!user) user = await findUserByEmailForPartnerIdsWithoutOwner(query, partnerIds);
+
+      if (!user && partnerIds.length === 0) {
+        user =
+          /^\d{6}$/.test(query)
+            ? await findUserByAccountNumberWithoutOwner(query)
+            : null;
+        if (!user) user = await findUserByPartnerUserIdWithoutOwner(query);
+        if (!user) user = await findUserByEmailWithoutOwner(query);
+      }
+    }
 
     if (!user) {
       return NextResponse.json({ message: `No user found for "${query}".` }, { status: 404 });
