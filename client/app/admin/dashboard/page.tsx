@@ -12,11 +12,15 @@ import {
   Eye,
   Key,
   Lock,
+  Mail,
   RefreshCw,
+  RotateCcw,
+  Search,
   Shield,
   ShieldAlert,
   ShieldCheck,
   TrendingUp,
+  UserCheck,
   Users,
   XCircle,
   Zap,
@@ -66,15 +70,29 @@ type ThreatEvent = {
   metadata: Record<string, unknown>;
 };
 
-const DASHBOARD_TABS = ["overview", "threats", "analytics", "audit"] as const;
+type BankUser = {
+  id: string;
+  partnerUserId: string;
+  fullName: string;
+  emailMasked: string;
+  emailFull: string;
+  phone: string;
+  phoneMasked: string;
+  accountNumber: string;
+  visualEnabled: boolean;
+  createdAt: string;
+};
+
+const DASHBOARD_TABS = ["overview", "threats", "analytics", "audit", "recovery", "users"] as const;
 type DashboardTab = (typeof DASHBOARD_TABS)[number];
 
 const resolveTabFromHash = (hash: string): DashboardTab => {
   const key = hash.replace(/^#/, "").toLowerCase();
-
   if (key === "analytics") return "analytics";
   if (key === "audit" || key === "logs") return "audit";
   if (key === "threats" || key === "security") return "threats";
+  if (key === "recovery") return "recovery";
+  if (key === "users") return "users";
   return "overview";
 };
 
@@ -142,6 +160,24 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
 
+  // Recovery panel state
+  const [recoveryQuery, setRecoveryQuery] = useState("");
+  const [recoverySending, setRecoverySending] = useState(false);
+  const [recoveryResult, setRecoveryResult] = useState<{
+    ok: boolean;
+    message: string;
+    enrollUrl?: string;
+    user?: { fullName: string; emailMasked: string; accountNumber: string };
+    emailSent?: boolean;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Users tab state
+  const [bankUsers, setBankUsers] = useState<BankUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
+  const [userResetStates, setUserResetStates] = useState<Record<string, { sending: boolean; result: string; enrollUrl?: string; copied?: boolean }>>({});
+
   useEffect(() => {
     const stored = localStorage.getItem("authToken");
     if (stored) setToken(stored);
@@ -190,12 +226,28 @@ export default function DashboardPage() {
     [token],
   );
 
+  // Fetch bank users from demo-bank
+  const fetchBankUsers = useCallback(async () => {
+    setUsersLoading(true);
+    try {
+      const demoBankBase = process.env.NEXT_PUBLIC_DEMO_BANK_URL || "http://localhost:3002";
+      const res = await fetch(`${demoBankBase}/api/demo-bank/agent/list-users`);
+      const data = await res.json() as { ok?: boolean; users?: BankUser[] };
+      if (data.ok && data.users) setBankUsers(data.users);
+    } catch {
+      // non-fatal
+    } finally {
+      setUsersLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
+    fetchBankUsers();
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => fetchData(), 30_000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, fetchBankUsers]);
 
   useEffect(() => {
     const syncFromHash = () => {
@@ -322,7 +374,7 @@ export default function DashboardPage() {
 
             {/* ── Tabs ── */}
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-              <TabsList className="grid w-full grid-cols-4 max-w-md rounded-full bg-slate-100 p-1 dark:bg-slate-800">
+              <TabsList className="grid w-full grid-cols-6 max-w-3xl rounded-full bg-slate-100 p-1 dark:bg-slate-800">
                 <TabsTrigger value="overview" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">Overview</TabsTrigger>
                 <TabsTrigger value="threats" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">
                   Threats
@@ -334,6 +386,17 @@ export default function DashboardPage() {
                 </TabsTrigger>
                 <TabsTrigger value="analytics" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">Analytics</TabsTrigger>
                 <TabsTrigger value="audit" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">Audit Log</TabsTrigger>
+                <TabsTrigger value="recovery" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">
+                  <RotateCcw className="h-3 w-3 mr-1" /> Recovery
+                </TabsTrigger>
+                <TabsTrigger value="users" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">
+                  <Users className="h-3 w-3 mr-1" /> Users
+                  {bankUsers.length > 0 && (
+                    <span className="ml-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500 text-[9px] text-white font-bold">
+                      {bankUsers.length}
+                    </span>
+                  )}
+                </TabsTrigger>
               </TabsList>
 
               {/* ── Overview Tab ── */}
@@ -695,6 +758,451 @@ export default function DashboardPage() {
                     }
                   </CardContent>
                 </Card>
+              </TabsContent>
+              {/* ── Recovery Tab ── */}
+              <TabsContent value="recovery" className="mt-4 space-y-4">
+
+                {/* Search card */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <UserCheck className="h-4 w-4 text-indigo-500" />
+                      Visual Password Recovery — Admin Reset
+                    </CardTitle>
+                    <CardDescription>
+                      Enter bank account number, Customer ID, or email. The system finds the user,
+                      generates a 15-min enroll link, emails it automatically, and shows it here to copy.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex gap-3">
+                      <input
+                        className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:font-sans"
+                        placeholder="6-digit account no., customer-bank-xxx, or email"
+                        value={recoveryQuery}
+                        onChange={e => { setRecoveryQuery(e.target.value); setRecoveryResult(null); setCopied(false); }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && recoveryQuery.trim()) {
+                            /* trigger via button ref */
+                            (document.getElementById("admin-reset-btn") as HTMLButtonElement)?.click();
+                          }
+                        }}
+                      />
+                      <Button
+                        id="admin-reset-btn"
+                        disabled={recoverySending || !recoveryQuery.trim()}
+                        onClick={async () => {
+                          setRecoverySending(true);
+                          setRecoveryResult(null);
+                          setCopied(false);
+                          try {
+                            const demoBankBase = process.env.NEXT_PUBLIC_DEMO_BANK_URL || "http://localhost:3002";
+                            const res = await fetch(`${demoBankBase}/api/demo-bank/agent/admin-reset`, {
+                              method: "POST",
+                              headers: { "content-type": "application/json" },
+                              body: JSON.stringify({ query: recoveryQuery.trim(), triggeredBy: "Admin Console" }),
+                            });
+                            const data = await res.json() as {
+                              ok?: boolean;
+                              message?: string;
+                              enrollUrl?: string;
+                              user?: { fullName: string; emailMasked: string; accountNumber: string };
+                              emailSent?: boolean;
+                            };
+                            if (!res.ok || !data.ok) throw new Error(data.message || "Failed.");
+                            setRecoveryResult({ ok: true, message: data.message || "Done.", enrollUrl: data.enrollUrl, user: data.user, emailSent: data.emailSent });
+                          } catch (err) {
+                            setRecoveryResult({ ok: false, message: err instanceof Error ? err.message : "Failed." });
+                          } finally {
+                            setRecoverySending(false);
+                          }
+                        }}
+                      >
+                        {recoverySending ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Finding…</> : <><Search className="h-4 w-4 mr-2" /> Generate & Send</>}
+                      </Button>
+                    </div>
+
+                    {/* Result */}
+                    {recoveryResult && (
+                      <div className={`rounded-xl border p-4 space-y-3 ${
+                        recoveryResult.ok
+                          ? "border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10"
+                          : "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10"
+                      }`}>
+                        {recoveryResult.ok && recoveryResult.user && (
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-green-800 dark:text-green-300">
+                                ✅ {recoveryResult.user.fullName}
+                              </p>
+                              <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+                                Account #{recoveryResult.user.accountNumber} · {recoveryResult.user.emailMasked}
+                              </p>
+                              <p className="text-xs mt-1 text-green-600 dark:text-green-500">
+                                {recoveryResult.emailSent ? "📧 Email sent automatically" : "📋 Email skipped (dev mode) — copy link below"}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {!recoveryResult.ok && (
+                          <p className="text-sm text-red-700 dark:text-red-400">⚠ {recoveryResult.message}</p>
+                        )}
+
+                        {/* Copyable link */}
+                        {recoveryResult.ok && recoveryResult.enrollUrl && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-green-700 dark:text-green-400">Re-Enrollment Link (expires in 15 min)</p>
+                            <div className="flex items-center gap-2">
+                              <code className="flex-1 text-xs bg-white dark:bg-slate-900 border border-green-200 dark:border-green-800 rounded-md px-3 py-2 font-mono break-all text-green-900 dark:text-green-200">
+                                {recoveryResult.enrollUrl}
+                              </code>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="shrink-0 border-green-300"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(recoveryResult.enrollUrl!);
+                                  setCopied(true);
+                                  setTimeout(() => setCopied(false), 2000);
+                                }}
+                              >
+                                {copied ? "✓ Copied!" : "Copy"}
+                              </Button>
+                            </div>
+                            <p className="text-xs text-green-600 dark:text-green-500">
+                              Share this link directly, or the user will receive it by email above.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Free Call System info + agent portal link */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Card className="border-blue-100 bg-blue-50/40 dark:border-blue-900/30 dark:bg-blue-900/10">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                        🎧 Calling Agent Portal
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-xs text-blue-800 dark:text-blue-200 space-y-2">
+                      <p>For phone-based recovery with DTMF account verification + OTP:</p>
+                      <a
+                        href="http://localhost:3002/agent"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700"
+                      >
+                        Open Agent Portal →
+                      </a>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-amber-100 bg-amber-50/40 dark:border-amber-900/30 dark:bg-amber-900/10">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                        📞 Free Call Integration
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-xs text-amber-800 dark:text-amber-200 space-y-1.5">
+                      <p className="font-semibold">Get free calling for demo:</p>
+                      <ul className="space-y-1 list-none">
+                        <li>🆓 <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer" className="underline font-medium">Twilio Free Trial</a> — $15 credit, no expiry</li>
+                        <li>🆓 <a href="https://www.vonage.com/communications-apis/" target="_blank" rel="noopener noreferrer" className="underline font-medium">Vonage/Nexmo</a> — €2 free credit</li>
+                        <li>🆓 <a href="https://plivo.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">Plivo</a> — $0.80 trial credit</li>
+                      </ul>
+                      <p className="text-amber-600 dark:text-amber-400 pt-1">All work on localhost via ngrok tunnel.</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              {/* ── Users Tab ── */}
+              <TabsContent value="users" className="mt-4">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Users className="h-4 w-4 text-indigo-500" />
+                          Bank Users
+                          <span className="text-xs font-normal text-muted-foreground bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                            {bankUsers.length} total
+                          </span>
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          All registered demo-bank users. Send a reset link to any user manually.
+                        </CardDescription>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={fetchBankUsers} disabled={usersLoading}>
+                        <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${usersLoading ? "animate-spin" : ""}`} />
+                        Refresh
+                      </Button>
+                    </div>
+
+                    {/* Search */}
+                    <div className="relative mt-3">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <input
+                        className="w-full rounded-lg border border-input bg-background pl-9 pr-4 py-2 text-sm"
+                        placeholder="Search by name, email, account number, or customer ID…"
+                        value={userSearch}
+                        onChange={e => setUserSearch(e.target.value)}
+                      />
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-0">
+                    {usersLoading && bankUsers.length === 0 ? (
+                      <div className="flex items-center justify-center py-16 text-muted-foreground">
+                        <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Loading users…
+                      </div>
+                    ) : bankUsers.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+                        <Users className="h-8 w-8 opacity-30" />
+                        <p className="text-sm">No users found. Register a user on the demo-bank first.</p>
+                        <a href="http://localhost:3002/register" target="_blank" rel="noopener noreferrer"
+                          className="text-xs underline text-indigo-500">Open Registration Page →</a>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-slate-50 dark:bg-slate-900/50">
+                              <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">User</th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Account #</th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Phone</th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Visual</th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Joined</th>
+                              <th className="text-right py-2.5 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {bankUsers
+                              .filter(u => {
+                                if (!userSearch.trim()) return true;
+                                const q = userSearch.toLowerCase();
+                                return (
+                                  u.fullName.toLowerCase().includes(q) ||
+                                  u.emailMasked.toLowerCase().includes(q) ||
+                                  u.emailFull.toLowerCase().includes(q) ||
+                                  u.accountNumber.includes(q) ||
+                                  u.partnerUserId.toLowerCase().includes(q)
+                                );
+                              })
+                              .map(u => {
+                                const rs = userResetStates[u.id];
+                                return (
+                                  <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors">
+                                    <td className="py-2.5 px-4">
+                                      <div className="font-semibold text-sm">{u.fullName}</div>
+                                      <div className="text-xs text-muted-foreground font-mono">{u.emailFull || u.emailMasked}</div>
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      <code className="text-sm font-mono font-bold tracking-widest bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                                        {u.accountNumber || "—"}
+                                      </code>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-xs text-muted-foreground font-mono">
+                                      {u.phoneMasked || "—"}
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      <Badge variant={u.visualEnabled ? "default" : "secondary"}
+                                        className={u.visualEnabled ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200" : ""}
+                                      >
+                                        {u.visualEnabled ? "✓ Active" : "✗ Not Set"}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-xs text-muted-foreground">
+                                      {new Date(u.createdAt).toLocaleDateString("en-IN")}
+                                    </td>
+                                    <td className="py-2.5 px-4 text-right">
+                                      <div className="flex flex-col items-end gap-1.5">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="text-xs h-7 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300"
+                                          disabled={rs?.sending}
+                                          onClick={async () => {
+                                            setUserResetStates(prev => ({ ...prev, [u.id]: { sending: true, result: "", copied: false } }));
+                                            try {
+                                              const demoBankBase = process.env.NEXT_PUBLIC_DEMO_BANK_URL || "http://localhost:3002";
+                                              const res = await fetch(`${demoBankBase}/api/demo-bank/agent/admin-reset`, {
+                                                method: "POST",
+                                                headers: { "content-type": "application/json" },
+                                                body: JSON.stringify({ query: u.partnerUserId, triggeredBy: "Admin Console — Users Tab" }),
+                                              });
+                                              const data = await res.json() as { ok?: boolean; message?: string; enrollUrl?: string; emailSent?: boolean };
+                                              if (!res.ok || !data.ok) throw new Error(data.message || "Failed");
+                                              setUserResetStates(prev => ({ ...prev, [u.id]: { sending: false, result: data.emailSent ? "📧 Emailed!" : "📋 Copy link", enrollUrl: data.enrollUrl, copied: false } }));
+                                            } catch (e) {
+                                              setUserResetStates(prev => ({ ...prev, [u.id]: { sending: false, result: `⚠ ${e instanceof Error ? e.message : "Failed"}` } }));
+                                            }
+                                          }}
+                                        >
+                                          {rs?.sending ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Sending…</> : <><Mail className="h-3 w-3 mr-1" />Send Reset Link</>}
+                                        </Button>
+
+                                        {/* Inline result */}
+                                        {rs?.result && !rs.sending && (
+                                          <div className="text-right">
+                                            <span className={`text-xs font-medium ${
+                                              rs.result.startsWith("⚠") ? "text-red-500" :
+                                              rs.result.startsWith("📧") ? "text-emerald-600" : "text-amber-600"
+                                            }`}>{rs.result}</span>
+                                            {rs.enrollUrl && (
+                                              <div className="flex items-center gap-1 mt-1">
+                                                <code className="text-[10px] text-muted-foreground font-mono max-w-[200px] truncate">
+                                                  {rs.enrollUrl.slice(0, 40)}…
+                                                </code>
+                                                <button
+                                                  className="text-[10px] font-bold text-indigo-600 hover:underline whitespace-nowrap"
+                                                  onClick={() => {
+                                                    navigator.clipboard.writeText(rs.enrollUrl!);
+                                                    setUserResetStates(prev => ({ ...prev, [u.id]: { ...rs, copied: true } }));
+                                                    setTimeout(() => setUserResetStates(prev => ({ ...prev, [u.id]: { ...rs, copied: false } })), 2000);
+                                                  }}
+                                                >
+                                                  {rs.copied ? "✓ Copied!" : "Copy"}
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+
+                        {bankUsers.filter(u => {
+                          if (!userSearch.trim()) return false;
+                          const q = userSearch.toLowerCase();
+                          return !(
+                            u.fullName.toLowerCase().includes(q) ||
+                            u.emailFull.toLowerCase().includes(q) ||
+                            u.accountNumber.includes(q) ||
+                            u.partnerUserId.toLowerCase().includes(q)
+                          );
+                        }).length === bankUsers.length && userSearch && (
+                          <div className="py-12 text-center text-sm text-muted-foreground">
+                            No users match &ldquo;{userSearch}&rdquo;
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* ── Settings Tab ── */}
+              <TabsContent value="settings" className="mt-4">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-emerald-500" />
+                        Email SMTP Configuration
+                      </CardTitle>
+                      <CardDescription>
+                        Configure how OTPs and Re-enrollment links are sent from the bank.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <form className="space-y-4" onSubmit={async (e) => {
+                        e.preventDefault();
+                        const fd = new FormData(e.currentTarget);
+                        const body = Object.fromEntries(fd);
+                        
+                        toast.promise(
+                          fetch("/api/proxy/demo-bank/email-settings", {
+                            method: "POST",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify(body),
+                          }).then(async r => {
+                            const d = await r.json();
+                            if (!r.ok) throw new Error(d.message || "Failed to save");
+                            return d;
+                          }),
+                          {
+                            loading: "Saving and testing connection...",
+                            success: (d) => d.message,
+                            error: (e) => e.message,
+                          }
+                        );
+                      }}>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold uppercase text-muted-foreground">Bank Name</label>
+                            <input name="bankName" defaultValue="HDFC Demo Bank" className="w-full rounded-md border p-2 text-sm" placeholder="HDFC Demo Bank" />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold uppercase text-muted-foreground">SMTP Host</label>
+                            <input name="host" defaultValue="smtp.gmail.com" className="w-full rounded-md border p-2 text-sm" placeholder="smtp.gmail.com" />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold uppercase text-muted-foreground">SMTP Port</label>
+                            <input name="port" defaultValue="587" className="w-full rounded-md border p-2 text-sm" placeholder="587" />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold uppercase text-muted-foreground">Sender Email</label>
+                            <input name="user" defaultValue="someshsrichandan@gmail.com" className="w-full rounded-md border p-2 text-sm" placeholder="user@gmail.com" />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold uppercase text-muted-foreground">App Password / Pass</label>
+                          <input name="pass" type="password" defaultValue="hafhlmzahkatvpsw" className="w-full rounded-md border p-2 text-sm font-mono" placeholder="••••••••••••••••" />
+                          <p className="text-[10px] text-muted-foreground italic mt-1">For Gmail: Use an "App Password" from your Google Security settings.</p>
+                        </div>
+
+                        <div className="pt-4 flex gap-3">
+                          <Button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+                            Save & Test Connection
+                          </Button>
+                        </div>
+                      </form>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-indigo-100 bg-indigo-50/20">
+                    <CardHeader>
+                      <CardTitle className="text-sm font-bold flex items-center gap-2">
+                        <Shield className="h-4 w-4 text-indigo-500" />
+                        Security Setup Guide
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-sm space-y-4">
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-indigo-100 pb-1">1. Generating App Passwords</h4>
+                        <p className="text-indigo-800 text-xs leading-relaxed">
+                          To send email via Gmail, you <strong>cannot</strong> use your normal password. 
+                          Enable 2-Step Verification, then go to "App Passwords" to generate a unique 16-character code.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-indigo-100 pb-1">2. Runtime Proxy Implementation</h4>
+                        <p className="text-indigo-800 text-xs leading-relaxed">
+                          This dashboard uses a <strong>Secure Proxy</strong>. When you hit "Save", your credentials are sent 
+                          to the Demo-Bank server and stored in its runtime process environment. 
+                        </p>
+                      </div>
+
+                      <div className="space-y-2 text-indigo-700 italic text-[11px] border-l-2 border-indigo-300 pl-3">
+                        <p>Note: Settings saved via this UI are <strong>runtime only</strong>. To persist across server restarts, add them to your <code className="bg-white/50 px-1 rounded">.env.local</code> file.</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               </TabsContent>
             </Tabs>
           </>

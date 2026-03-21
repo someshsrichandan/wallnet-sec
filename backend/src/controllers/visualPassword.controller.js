@@ -324,6 +324,7 @@ const enroll = asyncHandler(async (req, res) => {
   logEvent({
     action: existing ? "ENROLL_UPDATE" : "ENROLL",
     partnerId,
+    ownerUserId: authUserId,
     userId,
     req,
     metadata: { catalogType, formulaMode },
@@ -495,6 +496,7 @@ const initAuth = asyncHandler(async (req, res) => {
   logEvent({
     action: "INIT_AUTH",
     partnerId,
+    ownerUserId: credential.ownerUserId,
     userId,
     sessionToken,
     req,
@@ -510,6 +512,7 @@ const initAuth = asyncHandler(async (req, res) => {
     logEvent({
       action: "DEVICE_TRUST_LOW",
       partnerId,
+      ownerUserId: credential.ownerUserId,
       userId,
       sessionToken,
       req,
@@ -605,6 +608,7 @@ const getChallenge = asyncHandler(async (req, res) => {
   logEvent({
     action: "CHALLENGE_LOADED",
     partnerId: session.partnerId,
+    ownerUserId: session.ownerUserId,
     userId: session.userId,
     sessionToken,
     req,
@@ -802,6 +806,7 @@ const verify = asyncHandler(async (req, res) => {
     logEvent({
       action: "VERIFY_PASS",
       partnerId: session.partnerId,
+      ownerUserId: session.ownerUserId,
       userId: session.userId,
       sessionToken,
       req,
@@ -832,6 +837,7 @@ const verify = asyncHandler(async (req, res) => {
       logEvent({
         action: "HONEYPOT_DETECTED",
         partnerId: session.partnerId,
+        ownerUserId: session.ownerUserId,
         userId: session.userId,
         sessionToken,
         req,
@@ -850,6 +856,7 @@ const verify = asyncHandler(async (req, res) => {
       logEvent({
         action: session.status === "LOCKED" ? "SESSION_LOCKED" : "VERIFY_FAIL",
         partnerId: session.partnerId,
+        ownerUserId: session.ownerUserId,
         userId: session.userId,
         sessionToken,
         req,
@@ -882,6 +889,7 @@ const verify = asyncHandler(async (req, res) => {
     logEvent({
       action: "AI_FRAUD_ASSESSMENT",
       partnerId: session.partnerId,
+      ownerUserId: session.ownerUserId,
       userId: session.userId,
       sessionToken,
       req,
@@ -1008,6 +1016,7 @@ const consumeResult = asyncHandler(async (req, res) => {
   logEvent({
     action: "CONSUME_RESULT",
     partnerId: payload.partnerId,
+    ownerUserId: session.ownerUserId,
     userId: payload.userId,
     sessionToken: session.sessionToken,
     req,

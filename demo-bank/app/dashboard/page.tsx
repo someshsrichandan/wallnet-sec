@@ -239,19 +239,29 @@ export default async function DashboardPage({ searchParams }: Props) {
               <span className="info-value">{session.email}</span>
             </div>
             <div className="info-row">
+              <span className="info-label">📞 Bank Account No.</span>
+              <span className="info-value" style={{ fontFamily: "monospace", fontWeight: 700, fontSize: "1.1rem", color: "var(--navy)", letterSpacing: 4 }}>
+                {user?.accountNumber || "—"}
+              </span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Mobile</span>
+              <span className="info-value">{user?.phone || "—"}</span>
+            </div>
+            <div className="info-row">
               <span className="info-label">Customer ID</span>
               <span className="info-value">{session.partnerUserId}</span>
             </div>
             <div className="info-row">
               <span className="info-label">Internal ID</span>
-              <span
-                className="info-value"
-                style={{ fontSize: "0.8rem", color: "var(--muted)" }}
-              >
+              <span className="info-value" style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
                 {session.userId}
               </span>
             </div>
           </div>
+          <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "0.75rem", padding: "0.5rem 0.75rem", background: "var(--panel-soft)", borderRadius: 8 }}>
+            📞 Your <strong>Bank Account No.</strong> is required when calling support to recover your visual password.
+          </p>
         </div>
       </div>
     </section>

@@ -8,6 +8,10 @@ import { initVisualEnroll, VisualApiError } from "@/lib/visual-api";
 
 const toPartnerUserId = () => `customer-bank-${randomUUID().slice(0, 12)}`.toLowerCase();
 
+/** Generate a unique 6-digit account number */
+const generateAccountNumber = () =>
+  String(Math.floor(100000 + Math.random() * 900000));
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -19,11 +23,16 @@ export async function POST(request: Request) {
 
     const partnerUserId = parsed.partnerUserId || toPartnerUserId();
     const passwordHash = await hashPassword(parsed.password);
+    const accountNumber = generateAccountNumber();
+    const phone = String((body as Record<string, unknown>).phone || "").trim();
+
     const user = await createUser({
       fullName: parsed.fullName,
       email: parsed.email,
       passwordHash,
       partnerUserId,
+      phone,
+      accountNumber,
     });
 
     // Kick off visual enrollment redirect immediately after registration
@@ -47,6 +56,7 @@ export async function POST(request: Request) {
           email: user.email,
           fullName: user.fullName,
           partnerUserId: user.partnerUserId,
+          accountNumber: user.accountNumber,
         },
         enrollUrl,
       },
@@ -60,4 +70,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ message }, { status: 400 });
   }
 }
-

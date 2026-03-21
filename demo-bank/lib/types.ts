@@ -18,6 +18,8 @@ export type DemoBankUser = {
   fullName: string;
   email: string;
   passwordHash: string;
+  phone: string;
+  accountNumber: string;   // 6-digit numeric string
   visualEnabled: boolean;
   visualProfile?: VisualProfile;
   createdAt: string;

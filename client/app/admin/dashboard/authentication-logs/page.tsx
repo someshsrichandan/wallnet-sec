@@ -28,6 +28,9 @@ const AUTH_ACTIONS = new Set([
   "VERIFY_FAIL",
   "SESSION_LOCKED",
   "INIT_AUTH",
+  "USER_SIGNUP",
+  "USER_LOGIN_SUCCESS",
+  "USER_LOGIN_FAILURE",
 ]);
 
 export default function AuthenticationLogsPage() {
@@ -74,6 +77,8 @@ export default function AuthenticationLogsPage() {
         if (log.action === "VERIFY_FAIL") acc.fail += 1;
         if (log.action === "SESSION_LOCKED") acc.locked += 1;
         if (log.action === "INIT_AUTH") acc.init += 1;
+        if (log.action === "USER_LOGIN_SUCCESS") acc.pass += 1;
+        if (log.action === "USER_LOGIN_FAILURE") acc.fail += 1;
         return acc;
       },
       { pass: 0, fail: 0, locked: 0, init: 0 },

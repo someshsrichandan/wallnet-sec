@@ -13,6 +13,7 @@ const {
   assertRequiredString,
   parsePagination,
 } = require('../utils/validators');
+const { logEvent } = require('../services/auditLog.service');
 
 const list = asyncHandler(async (req, res) => {
   const { limit, page, skip } = parsePagination(req.query, {
@@ -49,6 +50,15 @@ const create = asyncHandler(async (req, res) => {
 
   const passwordHash = await hashPassword(password);
   const user = await User.create({ name, email: normalizedEmail, passwordHash });
+
+  logEvent({
+    action: 'USER_SIGNUP',
+    ownerUserId: user.id,
+    userId: user.id,
+    req,
+    metadata: { emailHash },
+  });
+
   res.status(201).json({ id: user.id, name: user.name, email: user.email });
 });
 
@@ -62,11 +72,23 @@ const login = asyncHandler(async (req, res) => {
     (await User.findOne({ emailHash })) ||
     (await User.findOne({ email: normalizedEmail }));
   if (!user) {
+    logEvent({
+      action: 'USER_LOGIN_FAILURE',
+      req,
+      metadata: { emailHash, reason: 'USER_NOT_FOUND' },
+    });
     throw new HttpError(401, 'Invalid email or password');
   }
 
   const passwordMatches = await verifyPassword(password, user.passwordHash);
   if (!passwordMatches) {
+    logEvent({
+      action: 'USER_LOGIN_FAILURE',
+      ownerUserId: user.id,
+      userId: user.id,
+      req,
+      metadata: { emailHash, reason: 'INVALID_PASSWORD' },
+    });
     throw new HttpError(401, 'Invalid email or password');
   }
 
@@ -74,6 +96,14 @@ const login = asyncHandler(async (req, res) => {
     { sub: user.id, email: user.email, role: 'user' },
     { secret: env.tokenSecret, expiresInSec: 60 * 60 * 12 }
   );
+
+  logEvent({
+    action: 'USER_LOGIN_SUCCESS',
+    ownerUserId: user.id,
+    userId: user.id,
+    req,
+    metadata: { emailHash },
+  });
 
   res.json({
     token,

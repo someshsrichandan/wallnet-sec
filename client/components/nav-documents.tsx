@@ -83,7 +83,7 @@ export function NavDocuments({
         ))}
         <SidebarMenuItem>
           <SidebarMenuButton asChild className="text-sidebar-foreground/70">
-            <Link href="/admin/dashboard/docs">
+            <Link href="/admin/dashboard/ai-calling-agent">
               <MoreHorizontal className="text-sidebar-foreground/70" />
               <span>More</span>
             </Link>
