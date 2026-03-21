@@ -1,4 +1,5 @@
 const AuditLog = require("../models/auditLog.model");
+const { redactSensitiveObject } = require("../utils/redact");
 
 const SEVERITY_MAP = {
   ENROLL: "INFO",
@@ -23,6 +24,23 @@ const SEVERITY_MAP = {
   API_KEY_REVOKED: "WARN",
 };
 
+const MAX_METADATA_CHARS = 16_000;
+
+const sanitizeMetadata = (metadata) => {
+  const redacted = redactSensitiveObject(metadata || {});
+  const serialized = JSON.stringify(redacted);
+
+  if (serialized.length <= MAX_METADATA_CHARS) {
+    return redacted;
+  }
+
+  return {
+    truncated: true,
+    maxChars: MAX_METADATA_CHARS,
+    preview: serialized.slice(0, MAX_METADATA_CHARS),
+  };
+};
+
 /**
  * Log a security-relevant event to the audit trail.
  */
@@ -41,7 +59,8 @@ const logEvent = async ({
     const userAgent =
       req?.headers?.["user-agent"] || req?.get?.("user-agent") || "";
     const requestId = req?.requestId || req?.headers?.["x-request-id"] || "";
-    const fingerprint = metadata?.fingerprint || "";
+    const safeMetadata = sanitizeMetadata(metadata || {});
+    const fingerprint = safeMetadata?.fingerprint || "";
 
     await AuditLog.create({
       action,
@@ -54,7 +73,7 @@ const logEvent = async ({
       requestId,
       fingerprint,
       geo: geo || {},
-      metadata: metadata || {},
+      metadata: safeMetadata,
     });
   } catch (error) {
     // Audit logging must never crash the main request

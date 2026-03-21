@@ -1,6 +1,7 @@
 ﻿# Backend API (Express + MongoDB)
 
 Backend service for:
+
 - visual-password session lifecycle
 - user registration/login/token auth
 - problem statement CRUD (admin via auth)
@@ -21,32 +22,48 @@ npm install
 ## 3. Environment Setup
 
 1. Copy env template:
+
 ```bash
 copy .env.example .env
 ```
+
 2. Update values in `.env`.
 
 ### Environment Variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `NODE_ENV` | No | `development` | Runtime mode (`development` or `production`) |
-| `PORT` | No | `3000` | Backend port |
-| `MONGODB_URI` | Yes | none | MongoDB connection string |
-| `TOKEN_SECRET` | Yes | insecure fallback in code | HMAC secret for user tokens + partner PASS tokens |
-| `CORS_ORIGIN` | No | `*` | Comma-separated allowlist, example: `http://localhost:3001,https://app.example.com` |
-| `PARTNER_CALLBACK_ALLOWLIST` | No | empty | Comma-separated origin allowlist for callback URLs. Example: `https://bank.example.com,http://localhost:3001` |
-| `JSON_LIMIT` | No | `20kb` | Express JSON request-body limit |
-| `VISUAL_SESSION_TTL_MS` | No | `300000` | Visual-password session expiry (ms) |
-| `VISUAL_MAX_ATTEMPTS` | No | `3` | Max verify attempts before lock |
+| Variable                       | Required      | Default                     | Description                                                                                                   |
+| ------------------------------ | ------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                     | No            | `development`               | Runtime mode (`development` or `production`)                                                                  |
+| `PORT`                         | No            | `3000`                      | Backend port                                                                                                  |
+| `MONGODB_URI`                  | Yes           | none                        | MongoDB connection string                                                                                     |
+| `TOKEN_SECRET`                 | Yes           | insecure fallback in code   | HMAC secret for user tokens + partner PASS tokens                                                             |
+| `CORS_ORIGIN`                  | No            | `*`                         | Comma-separated allowlist, example: `http://localhost:3001,https://app.example.com`                           |
+| `PARTNER_CALLBACK_ALLOWLIST`   | No            | empty                       | Comma-separated origin allowlist for callback URLs. Example: `https://bank.example.com,http://localhost:3001` |
+| `JSON_LIMIT`                   | No            | `20kb`                      | Express JSON request-body limit                                                                               |
+| `VISUAL_SESSION_TTL_MS`        | No            | `300000`                    | Visual-password session expiry (ms)                                                                           |
+| `VISUAL_MAX_ATTEMPTS`          | No            | `3`                         | Max verify attempts before lock                                                                               |
+| `AI_ENABLED`                   | No            | `false`                     | Enable AI integration features                                                                                |
+| `AI_PROVIDER`                  | No            | `openai`                    | LLM provider (currently `openai`)                                                                             |
+| `AI_API_KEY`                   | Conditionally | none                        | Required when `AI_ENABLED=true`                                                                               |
+| `AI_BASE_URL`                  | No            | `https://api.openai.com/v1` | LLM API base URL                                                                                              |
+| `AI_MODEL`                     | No            | `gpt-4o-mini`               | Model used for AI features                                                                                    |
+| `AI_TIMEOUT_MS`                | No            | `1500`                      | Per-request AI timeout in milliseconds                                                                        |
+| `AI_MAX_RETRIES`               | No            | `1`                         | Retry count for transient AI failures                                                                         |
+| `AI_FRAUD_SHADOW_MODE`         | No            | `true`                      | Compute AI fraud decision without enforcing                                                                   |
+| `AI_FRAUD_ENFORCEMENT_MODE`    | No            | `false`                     | Allow AI to influence enforcement logic                                                                       |
+| `AI_THREAT_SUMMARY_ENABLED`    | No            | `false`                     | Enable AI threat summarization feature                                                                        |
+| `AI_PARTNER_ASSISTANT_ENABLED` | No            | `false`                     | Enable partner AI assistant feature                                                                           |
 
 ## 4. Run
 
 - Development:
+
 ```bash
 npm run dev
 ```
+
 - Production:
+
 ```bash
 npm start
 ```
@@ -55,6 +72,7 @@ npm start
 
 - Endpoint: `GET /health`
 - Example:
+
 ```json
 {
   "status": "ok",
@@ -80,6 +98,7 @@ npm start
 - `GET /api/users?page=1&limit=20` auth required
 
 Register request body:
+
 ```json
 {
   "name": "Admin User",
@@ -89,6 +108,7 @@ Register request body:
 ```
 
 Login response:
+
 ```json
 {
   "token": "<bearer-token>",
@@ -120,6 +140,7 @@ Login response:
 - `POST /api/visual-password/partner/consume-result`
 
 Start request body:
+
 ```json
 {
   "partnerId": "partner-bank-01",
@@ -131,6 +152,7 @@ Start request body:
 ```
 
 Verify request body:
+
 ```json
 {
   "sessionId": "12c7...",
@@ -139,6 +161,7 @@ Verify request body:
 ```
 
 Enroll request body:
+
 ```json
 {
   "partnerId": "partner-bank-01",
@@ -161,15 +184,20 @@ Note: in `production` mode, non-localhost callback URLs must use `https`.
 ### Curl Smoke Test (End-to-End)
 
 1. Register and login admin user:
+
 ```bash
 curl -X POST http://localhost:3000/api/users -H "Content-Type: application/json" -d "{\"name\":\"Admin\",\"email\":\"admin@example.com\",\"password\":\"StrongPass123!\"}"
 curl -X POST http://localhost:3000/api/users/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"StrongPass123!\"}"
 ```
+
 2. Enroll visual credential with bearer token from login:
+
 ```bash
 curl -X POST http://localhost:3000/api/visual-password/enroll -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" -d "{\"partnerId\":\"partner-bank-01\",\"userId\":\"user-1227\",\"pattern\":[0,3,5,8]}"
 ```
+
 3. Start and verify session:
+
 ```bash
 curl -X POST http://localhost:3000/api/visual-password/start -H "Content-Type: application/json" -d "{\"partnerId\":\"partner-bank-01\",\"userId\":\"user-1227\",\"callbackUrl\":\"http://localhost:3001/partner-live/callback\",\"state\":\"txn-login-001\"}"
 curl -X POST http://localhost:3000/api/visual-password/verify -H "Content-Type: application/json" -d "{\"sessionId\":\"<SESSION_ID>\",\"pattern\":[0,3,5,8]}"
@@ -178,6 +206,7 @@ curl -X POST http://localhost:3000/api/visual-password/verify -H "Content-Type: 
 ## 8. Error Response Shape
 
 All errors return JSON:
+
 ```json
 {
   "message": "Validation message",
