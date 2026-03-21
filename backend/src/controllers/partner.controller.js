@@ -25,7 +25,6 @@ const listKeys = asyncHandler(async (req, res) => {
 
   // Show key_id in full, never show secret
   const masked = keys.map((key) => ({
-<<<<<<< HEAD
     id: key._id,
     partnerId: key.partnerId,
     label: key.label,
@@ -38,16 +37,11 @@ const listKeys = asyncHandler(async (req, res) => {
     lastUsedAt: key.lastUsedAt,
     createdAt: key.createdAt,
     updatedAt: key.updatedAt,
-    // Legacy field display (if present)
-    apiKey: key.apiKey || undefined,
-=======
-    ...key,
     apiKey:
       key.apiKeyPreview ?
         `${"•".repeat(24)}${key.apiKeyPreview}`
       : "",
     apiKeyPreview: key.apiKeyPreview || "",
->>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
   }));
 
   res.json({ keys: masked });
@@ -90,17 +84,15 @@ const generateKey = asyncHandler(async (req, res) => {
     partnerId,
     ownerUserId,
     label,
-<<<<<<< HEAD
     keyId,
     keySecretHash,
     webhookSecret,
-=======
->>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
     mode,
     webhookUrl,
     callbackAllowlist,
   });
-  partnerKey.setApiKey(apiKey);
+  // Keep a deterministic, encrypted fallback key value for legacy x-api-key lookups.
+  partnerKey.setApiKey(keyId);
   await partnerKey.save();
 
   await logEvent({
@@ -116,13 +108,9 @@ const generateKey = asyncHandler(async (req, res) => {
     id: partnerKey._id,
     partnerId: partnerKey.partnerId,
     label: partnerKey.label,
-<<<<<<< HEAD
     key_id: keyId,
     key_secret: keySecret,
     webhook_secret: webhookSecret,
-=======
-    apiKey,
->>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
     mode: partnerKey.mode,
     webhookUrl: partnerKey.webhookUrl,
     callbackAllowlist: partnerKey.callbackAllowlist,
@@ -155,13 +143,7 @@ const rotateKey = asyncHandler(async (req, res) => {
     throw new HttpError(403, "You can only rotate your own keys");
   }
 
-<<<<<<< HEAD
   const newSecret = await existing.rotateSecret();
-=======
-  const oldPreview = existing.apiKeyPreview || "";
-  const newApiKey = PartnerKey.generateApiKey(existing.mode);
-  existing.setApiKey(newApiKey);
->>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
   await existing.save();
 
   await logEvent({
@@ -170,13 +152,7 @@ const rotateKey = asyncHandler(async (req, res) => {
     userId: ownerUserId,
     req,
     metadata: {
-<<<<<<< HEAD
       keyId: existing.keyId,
-=======
-      keyId,
-      oldKeyPreview: oldPreview,
-      newKeyPreview: existing.apiKeyPreview,
->>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
       mode: existing.mode,
     },
   });
@@ -184,12 +160,8 @@ const rotateKey = asyncHandler(async (req, res) => {
   res.json({
     id: existing._id,
     partnerId: existing.partnerId,
-<<<<<<< HEAD
     key_id: existing.keyId,
     key_secret: newSecret,
-=======
-    apiKey: newApiKey,
->>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
     mode: existing.mode,
     message:
       "Key secret rotated. Save the new key_secret — it will NOT be shown again. " +
@@ -309,11 +281,8 @@ const getKeyUsage = asyncHandler(async (req, res) => {
   res.json({
     id: existing._id,
     partnerId: existing.partnerId,
-<<<<<<< HEAD
     key_id: existing.keyId,
-=======
     apiKeyPreview: existing.apiKeyPreview || "",
->>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
     mode: existing.mode,
     usageCount: existing.usageCount,
     lastUsedAt: existing.lastUsedAt,

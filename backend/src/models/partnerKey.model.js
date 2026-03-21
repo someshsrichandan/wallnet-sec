@@ -1,45 +1,30 @@
 const { Schema, model } = require("mongoose");
-<<<<<<< HEAD
 const { randomBytes } = require("crypto");
 const bcrypt = require("bcrypt");
-
-const BCRYPT_ROUNDS = 10;
-=======
-const { randomUUID, randomBytes } = require("crypto");
 const {
   decryptString,
   encryptString,
   hashDeterministic,
 } = require("../utils/fieldEncryption");
->>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
+
+const BCRYPT_ROUNDS = 10;
 
 const partnerKeySchema = new Schema(
   {
     partnerId: { type: String, required: true, trim: true, index: true },
     ownerUserId: { type: String, required: true, trim: true, index: true },
     label: { type: String, default: "", trim: true },
-<<<<<<< HEAD
 
-    // ── Razorpay-style key_id + key_secret ──────────────────────────
-    // keyId is the public identifier (always visible, used in Basic auth)
+    // Razorpay-style key_id + key_secret
     keyId: { type: String, required: true, unique: true, index: true },
-
-    // keySecretHash stores the bcrypt hash of the secret (never exposed after creation)
     keySecretHash: { type: String, required: true },
-
-    // webhookSecret is used to sign webhook payloads (HMAC-SHA256)
     webhookSecret: { type: String, default: "" },
 
-    // Legacy field — kept for backward compat with env-based keys
-    // New DB-generated keys do NOT use this field
+    // Legacy/fallback storage for x-api-key compatibility
     apiKey: { type: String, default: "", index: true, sparse: true },
-
-=======
-    apiKey: { type: String, default: "" },
-    apiKeyEncrypted: { type: Schema.Types.Mixed, required: true },
-    apiKeyHash: { type: String, required: true, unique: true, index: true },
+    apiKeyEncrypted: { type: Schema.Types.Mixed, default: "" },
+    apiKeyHash: { type: String, default: "", unique: true, sparse: true },
     apiKeyPreview: { type: String, default: "", trim: true },
->>>>>>> 62388dadf3d8d8ec21b053b424e5fc17b2b98703
     mode: {
       type: String,
       enum: ["test", "live"],
@@ -62,7 +47,7 @@ partnerKeySchema.methods.setApiKey = function (apiKeyValue) {
   const apiKey = String(apiKeyValue || "").trim();
   this.apiKey = "";
   this.apiKeyEncrypted = encryptString(apiKey);
-  this.apiKeyHash = hashDeterministic(apiKey);
+  this.apiKeyHash = apiKey ? hashDeterministic(apiKey) : "";
   this.apiKeyPreview = apiKey ? apiKey.slice(-8) : "";
 };
 
@@ -73,15 +58,6 @@ partnerKeySchema.methods.getApiKey = function () {
   return String(this.apiKey || "");
 };
 
-/**
- * Generate a Razorpay-style key pair.
- *
- * Returns: { keyId, keySecret, keySecretHash, webhookSecret }
- *
- *   keyId      – public, e.g. "key_test_vps_a1b2c3d4e5f6"
- *   keySecret  – private, shown once: "secret_test_vps_..."  (32 hex bytes)
- *   webhookSecret – used to sign webhooks: "whsec_..."       (32 hex bytes)
- */
 partnerKeySchema.statics.generateKeyPair = async function (mode = "test") {
   const modeTag = mode === "live" ? "live" : "test";
 
@@ -94,18 +70,11 @@ partnerKeySchema.statics.generateKeyPair = async function (mode = "test") {
   return { keyId, keySecret, keySecretHash, webhookSecret };
 };
 
-/**
- * Verify a plaintext key secret against the stored hash.
- */
 partnerKeySchema.methods.verifySecret = async function (plainSecret) {
   if (!this.keySecretHash) return false;
   return bcrypt.compare(plainSecret, this.keySecretHash);
 };
 
-/**
- * Rotate the key secret — generates a new secret + hash.
- * Returns the new plaintext secret (one-time visible).
- */
 partnerKeySchema.methods.rotateSecret = async function () {
   const modeTag = this.mode === "live" ? "live" : "test";
   const newSecret = `secret_${modeTag}_vps_${randomBytes(32).toString("hex")}`;
@@ -113,7 +82,6 @@ partnerKeySchema.methods.rotateSecret = async function () {
   return newSecret;
 };
 
-// ── Legacy helper (kept for backward compat with env-based keys) ──
 partnerKeySchema.statics.generateApiKey = function (mode = "test") {
   const prefix = mode === "live" ? "sk_live_vps_" : "sk_test_vps_";
   return `${prefix}${randomBytes(16).toString("hex")}`;
