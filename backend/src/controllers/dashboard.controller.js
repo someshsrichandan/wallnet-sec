@@ -281,14 +281,29 @@ const getAuditLogs = asyncHandler(async (req, res) => {
   });
   const partnerId = req.query.partnerId || undefined;
   const action = req.query.action || undefined;
+  const actions =
+    typeof req.query.actions === "string" ?
+      req.query.actions
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : undefined;
   const severity = req.query.severity || undefined;
+  const sinceHours =
+    req.query.sinceHours ?
+      assertInteger("sinceHours", req.query.sinceHours, { min: 1, max: 720 })
+    : undefined;
+  const since =
+    sinceHours ? new Date(Date.now() - sinceHours * 60 * 60 * 1000) : undefined;
 
   const result = await queryLogs({
     partnerId,
     ownerUserId,
     partnerIds,
     action,
+    actions,
     severity,
+    since,
     limit,
     offset: skip,
   });
