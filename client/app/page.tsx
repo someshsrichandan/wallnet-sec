@@ -344,7 +344,7 @@ export default function Home() {
                     Defense that Malware <br/> <span className="serif text-indigo-500/80">cannot read.</span>
                  </h2>
                  <p className="text-[1.05rem] text-slate-500 dark:text-zinc-400 leading-relaxed font-semibold">
-                    FraudShield moves the authentication secret from the device storage to the user's mind. 
+                    WallNet-Sec moves the authentication secret from the device storage to the user's mind. 
                     Calculations happen in biological neural networks — the only hardware you can't scan.
                  </p>
               </div>

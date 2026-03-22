@@ -176,7 +176,7 @@ export default function AdminLogin() {
           </CardContent>
           <CardFooter className="flex flex-col gap-4 border-t border-border/40 bg-muted/30 p-6">
             <p className="text-sm text-muted-foreground text-center">
-              New to FraudShield?{" "}
+              New to WallNet-Sec?{" "}
               <Link
                 href="/admin/signup"
                 className="font-bold text-primary hover:text-primary/80 transition-colors"

@@ -111,15 +111,15 @@ async function startVisualAuth(userId) {
   const state = crypto.randomUUID();
 
   const res = await fetch(
-    \`\${process.env.FRAUDSHIELD_BASE_URL}/api/product/v1/init-auth?mode=live\`,
+    \`\${process.env.WALLNET_SEC_BASE_URL}/api/product/v1/init-auth?mode=live\`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.FRAUDSHIELD_API_KEY,
+        "x-api-key": process.env.WALLNET_SEC_API_KEY,
       },
       body: JSON.stringify({
-        partnerId: process.env.FRAUDSHIELD_PARTNER_ID,
+        partnerId: process.env.WALLNET_SEC_PARTNER_ID,
         userId,
         callbackUrl: \`\${process.env.APP_BASE_URL}/auth/visual/callback\`,
         state,
@@ -138,12 +138,12 @@ async function startVisualAuth(userId) {
     consumeResult: `// Node.js — Validate verification result
 async function consumeVisualResult(signature) {
   const res = await fetch(
-    \`\${process.env.FRAUDSHIELD_BASE_URL}/api/product/v1/partner/consume-result?mode=live\`,
+    \`\${process.env.WALLNET_SEC_BASE_URL}/api/product/v1/partner/consume-result?mode=live\`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.FRAUDSHIELD_API_KEY,
+        "x-api-key": process.env.WALLNET_SEC_API_KEY,
       },
       body: JSON.stringify({ signature }),
     }
@@ -185,14 +185,14 @@ def start_visual_auth(user_id: str) -> dict:
     state = str(uuid.uuid4())
 
     response = requests.post(
-        f"{os.environ['FRAUDSHIELD_BASE_URL']}/api/product/v1/init-auth",
+        f"{os.environ['WALLNET_SEC_BASE_URL']}/api/product/v1/init-auth",
         params={"mode": "live"},
         headers={
             "Content-Type": "application/json",
-            "x-api-key": os.environ["FRAUDSHIELD_API_KEY"],
+            "x-api-key": os.environ["WALLNET_SEC_API_KEY"],
         },
         json={
-            "partnerId": os.environ["FRAUDSHIELD_PARTNER_ID"],
+            "partnerId": os.environ["WALLNET_SEC_PARTNER_ID"],
             "userId": user_id,
             "callbackUrl": f"{os.environ['APP_BASE_URL']}/auth/visual/callback",
             "state": state,
@@ -208,11 +208,11 @@ def start_visual_auth(user_id: str) -> dict:
     consumeResult: `# Python — Validate verification result
 def consume_visual_result(signature: str) -> dict:
     response = requests.post(
-        f"{os.environ['FRAUDSHIELD_BASE_URL']}/api/product/v1/partner/consume-result",
+        f"{os.environ['WALLNET_SEC_BASE_URL']}/api/product/v1/partner/consume-result",
         params={"mode": "live"},
         headers={
             "Content-Type": "application/json",
-            "x-api-key": os.environ["FRAUDSHIELD_API_KEY"],
+            "x-api-key": os.environ["WALLNET_SEC_API_KEY"],
         },
         json={"signature": signature},
     )
@@ -246,15 +246,15 @@ def visual_callback():
     lang: "java",
     initAuth: `// Java (Spring Boot) — Start visual verification
 @Service
-public class FraudShieldService {
+public class WallNet-SecService {
 
-    @Value("\${fraudshield.base-url}")
+    @Value("\${wallnet-sec.base-url}")
     private String baseUrl;
 
-    @Value("\${fraudshield.api-key}")
+    @Value("\${wallnet-sec.api-key}")
     private String apiKey;
 
-    @Value("\${fraudshield.partner-id}")
+    @Value("\${wallnet-sec.partner-id}")
     private String partnerId;
 
     private final WebClient webClient;
@@ -308,7 +308,7 @@ public String visualCallback(
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Verification failed");
     }
 
-    Map<String, Object> consumed = fraudShieldService.consumeVisualResult(signature);
+    Map<String, Object> consumed = WallNet-SecService.consumeVisualResult(signature);
     session.setAttribute("user", consumed.get("userId"));
     session.removeAttribute("pendingVisual");
 
@@ -324,18 +324,18 @@ function startVisualAuth(string $userId): array {
     $state = bin2hex(random_bytes(16));
 
     $payload = [
-        "partnerId"   => getenv("FRAUDSHIELD_PARTNER_ID"),
+        "partnerId"   => getenv("WALLNET_SEC_PARTNER_ID"),
         "userId"      => $userId,
         "callbackUrl" => getenv("APP_BASE_URL") . "/auth/visual/callback",
         "state"       => $state,
     ];
 
-    $ch = curl_init(getenv("FRAUDSHIELD_BASE_URL") . "/api/product/v1/init-auth?mode=live");
+    $ch = curl_init(getenv("WALLNET_SEC_BASE_URL") . "/api/product/v1/init-auth?mode=live");
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
         CURLOPT_HTTPHEADER     => [
             "Content-Type: application/json",
-            "x-api-key: " . getenv("FRAUDSHIELD_API_KEY"),
+            "x-api-key: " . getenv("WALLNET_SEC_API_KEY"),
         ],
         CURLOPT_POSTFIELDS     => json_encode($payload),
         CURLOPT_RETURNTRANSFER => true,
@@ -356,12 +356,12 @@ function startVisualAuth(string $userId): array {
     consumeResult: `<?php
 // PHP — Validate verification result
 function consumeVisualResult(string $signature): array {
-    $ch = curl_init(getenv("FRAUDSHIELD_BASE_URL") . "/api/product/v1/partner/consume-result?mode=live");
+    $ch = curl_init(getenv("WALLNET_SEC_BASE_URL") . "/api/product/v1/partner/consume-result?mode=live");
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
         CURLOPT_HTTPHEADER     => [
             "Content-Type: application/json",
-            "x-api-key: " . getenv("FRAUDSHIELD_API_KEY"),
+            "x-api-key: " . getenv("WALLNET_SEC_API_KEY"),
         ],
         CURLOPT_POSTFIELDS     => json_encode(["signature" => $signature]),
         CURLOPT_RETURNTRANSFER => true,
@@ -409,30 +409,30 @@ exit;`,
     label: "ASP.NET",
     lang: "csharp",
     initAuth: `// ASP.NET (C#) — Start visual verification
-public class FraudShieldService
+public class WallNet-SecService
 {
     private readonly HttpClient _http;
     private readonly IConfiguration _config;
 
-    public FraudShieldService(HttpClient http, IConfiguration config)
+    public WallNet-SecService(HttpClient http, IConfiguration config)
     {
         _http = http;
         _config = config;
-        _http.DefaultRequestHeaders.Add("x-api-key", _config["FraudShield:ApiKey"]);
+        _http.DefaultRequestHeaders.Add("x-api-key", _config["WallNet-Sec:ApiKey"]);
     }
 
     public async Task<InitAuthResponse> StartVisualAuthAsync(string userId, string state)
     {
         var payload = new
         {
-            partnerId = _config["FraudShield:PartnerId"],
+            partnerId = _config["WallNet-Sec:PartnerId"],
             userId,
             callbackUrl = $"{_config["App:BaseUrl"]}/auth/visual/callback",
             state
         };
 
         var response = await _http.PostAsJsonAsync(
-            $"{_config["FraudShield:BaseUrl"]}/api/product/v1/init-auth?mode=live",
+            $"{_config["WallNet-Sec:BaseUrl"]}/api/product/v1/init-auth?mode=live",
             payload
         );
         response.EnsureSuccessStatusCode();
@@ -445,7 +445,7 @@ public class FraudShieldService
 public async Task<ConsumeResponse> ConsumeVisualResultAsync(string signature)
 {
     var response = await _http.PostAsJsonAsync(
-        $"{_config["FraudShield:BaseUrl"]}/api/product/v1/partner/consume-result?mode=live",
+        $"{_config["WallNet-Sec:BaseUrl"]}/api/product/v1/partner/consume-result?mode=live",
         new { signature }
     );
     response.EnsureSuccessStatusCode();
@@ -475,7 +475,7 @@ public async Task<IActionResult> VisualCallback(
         return Unauthorized("Verification failed");
     }
 
-    var consumed = await _fraudShield.ConsumeVisualResultAsync(signature);
+    var consumed = await _wallnet-sec.ConsumeVisualResultAsync(signature);
     HttpContext.Session.SetString("User", consumed.UserId);
     HttpContext.Session.Remove("PendingVisual");
 
@@ -486,7 +486,7 @@ public async Task<IActionResult> VisualCallback(
     label: "Go",
     lang: "go",
     initAuth: `// Go — Start visual verification
-package fraudshield
+package WallNet-Sec
 
 import (
     "bytes"
@@ -504,18 +504,18 @@ type InitAuthResponse struct {
 
 func StartVisualAuth(userID, state string) (*InitAuthResponse, error) {
     payload, _ := json.Marshal(map[string]string{
-        "partnerId":   os.Getenv("FRAUDSHIELD_PARTNER_ID"),
+        "partnerId":   os.Getenv("WALLNET_SEC_PARTNER_ID"),
         "userId":      userID,
         "callbackUrl": os.Getenv("APP_BASE_URL") + "/auth/visual/callback",
         "state":       state,
     })
 
     req, _ := http.NewRequest("POST",
-        os.Getenv("FRAUDSHIELD_BASE_URL")+"/api/product/v1/init-auth?mode=live",
+        os.Getenv("WALLNET_SEC_BASE_URL")+"/api/product/v1/init-auth?mode=live",
         bytes.NewBuffer(payload),
     )
     req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("x-api-key", os.Getenv("FRAUDSHIELD_API_KEY"))
+    req.Header.Set("x-api-key", os.Getenv("WALLNET_SEC_API_KEY"))
 
     resp, err := http.DefaultClient.Do(req)
     if err != nil { return nil, err }
@@ -542,11 +542,11 @@ func ConsumeVisualResult(signature string) (*ConsumeResponse, error) {
     payload, _ := json.Marshal(map[string]string{"signature": signature})
 
     req, _ := http.NewRequest("POST",
-        os.Getenv("FRAUDSHIELD_BASE_URL")+"/api/product/v1/partner/consume-result?mode=live",
+        os.Getenv("WALLNET_SEC_BASE_URL")+"/api/product/v1/partner/consume-result?mode=live",
         bytes.NewBuffer(payload),
     )
     req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("x-api-key", os.Getenv("FRAUDSHIELD_API_KEY"))
+    req.Header.Set("x-api-key", os.Getenv("WALLNET_SEC_API_KEY"))
 
     resp, err := http.DefaultClient.Do(req)
     if err != nil { return nil, err }
@@ -600,10 +600,10 @@ func visualCallbackHandler(w http.ResponseWriter, r *http.Request) {
     label: "Ruby",
     lang: "ruby",
     initAuth: `# Ruby (Rails) — Start visual verification
-class FraudShieldService
-  BASE_URL   = ENV["FRAUDSHIELD_BASE_URL"]
-  API_KEY    = ENV["FRAUDSHIELD_API_KEY"]
-  PARTNER_ID = ENV["FRAUDSHIELD_PARTNER_ID"]
+class WallNet-SecService
+  BASE_URL   = ENV["WALLNET_SEC_BASE_URL"]
+  API_KEY    = ENV["WALLNET_SEC_API_KEY"]
+  PARTNER_ID = ENV["WALLNET_SEC_PARTNER_ID"]
 
   def self.start_visual_auth(user_id:, state:, callback_url:)
     uri = URI("#{BASE_URL}/api/product/v1/init-auth?mode=live")
@@ -655,7 +655,7 @@ class VisualCallbackController < ApplicationController
       return render plain: "Verification failed", status: :unauthorized
     end
 
-    consumed = FraudShieldService.consume_visual_result(signature: params[:signature])
+    consumed = WallNet-SecService.consume_visual_result(signature: params[:signature])
     session[:user] = consumed["userId"]
     session.delete(:pending_visual)
 
@@ -686,7 +686,7 @@ export default function LoginPage() {
 
       if (!loginRes.ok) throw new Error("Invalid credentials");
 
-      // Step 2: Start visual verification (calls your backend, not FraudShield directly)
+      // Step 2: Start visual verification (calls your backend, not WallNet-Sec directly)
       const visualRes = await fetch("/api/auth/start-visual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -727,7 +727,7 @@ useEffect(() => {
       return;
     }
 
-    // Call YOUR backend to consume the result (never call FraudShield directly)
+    // Call YOUR backend to consume the result (never call WallNet-Sec directly)
     const res = await fetch("/api/auth/consume-visual", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -789,14 +789,14 @@ export default function VisualCallbackPage() {
 };
 
 const envConfig = `# Your backend .env — Add these variables
-FRAUDSHIELD_BASE_URL=https://fraudshield.example.com
-FRAUDSHIELD_API_KEY=pk_live_your-api-key-here
-FRAUDSHIELD_PARTNER_ID=your_company_id
+WALLNET_SEC_BASE_URL=https://wallnet-sec.example.com
+WALLNET_SEC_API_KEY=pk_live_your-api-key-here
+WALLNET_SEC_PARTNER_ID=your_company_id
 APP_BASE_URL=https://your-app.example.com
 
 # For test/sandbox (optional)
-FRAUDSHIELD_SANDBOX_URL=https://sandbox.fraudshield.example.com
-FRAUDSHIELD_SANDBOX_API_KEY=pk_test_your-sandbox-key`;
+WALLNET_SEC_SANDBOX_URL=https://sandbox.wallnet-sec.example.com
+WALLNET_SEC_SANDBOX_API_KEY=pk_test_your-sandbox-key`;
 
 const securityRules = [
   "Never expose your live API key in frontend/client-side code.",
@@ -850,7 +850,7 @@ export default function DevelopersPage() {
           </h1>
           
           <p className="max-w-2xl text-lg leading-relaxed text-slate-600 dark:text-slate-400 mb-10">
-            Use these implementation patterns to add FraudShield as a precise second step. Your backend remains the session authority while we handle the cognitive verification.
+            Use these implementation patterns to add WallNet-Sec as a precise second step. Your backend remains the session authority while we handle the cognitive verification.
           </p>
 
           <div className="flex flex-wrap gap-4">
@@ -871,7 +871,7 @@ export default function DevelopersPage() {
             <CardHeader className="pb-8">
               <CardTitle className="text-2xl font-bold">Integration Architecture</CardTitle>
               <CardDescription className="text-base">
-                Your system controls first-factor login; FraudShield adds a secure verification checkpoint.
+                Your system controls first-factor login; WallNet-Sec adds a secure verification checkpoint.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">

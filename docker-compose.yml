@@ -1,7 +1,7 @@
 services:
   mongo:
     image: mongo:7
-    container_name: fraudshield-mongo
+    container_name: wallnet-sec-mongo
     restart: unless-stopped
     ports:
       - "27017:27017"
@@ -11,12 +11,12 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: fraudshield-backend
+    container_name: wallnet-sec-backend
     restart: unless-stopped
     environment:
       NODE_ENV: production
       PORT: 3000
-      MONGODB_URI: mongodb://mongo:27017/fraudshield
+      MONGODB_URI: mongodb://mongo:27017/wallnet-sec
       TOKEN_SECRET: replace-with-production-secret
       CORS_ORIGIN: http://localhost:3001
       PARTNER_CALLBACK_ALLOWLIST: http://localhost:3001
@@ -31,7 +31,7 @@ services:
   client:
     build:
       context: ./client
-    container_name: fraudshield-client
+    container_name: wallnet-sec-client
     restart: unless-stopped
     environment:
       NODE_ENV: production

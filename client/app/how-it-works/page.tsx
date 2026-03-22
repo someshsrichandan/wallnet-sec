@@ -489,7 +489,7 @@ export default function HowItWorksPage() {
                     <div className="flex justify-between items-center bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-100 dark:border-indigo-800 shadow-sm">
                        <div className="flex items-center gap-2 font-semibold text-indigo-700 dark:text-indigo-300">
                           <Server className="h-4 w-4" />
-                          <span>FraudShield API</span>
+                          <span>WallNet-Sec API</span>
                        </div>
                        <Badge className="bg-indigo-600 text-white text-[10px]">Verification</Badge>
                     </div>

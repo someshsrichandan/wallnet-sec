@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SiteNav } from "@/components/site-nav";
+import Chatbot from "@/components/chatbot";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -18,7 +19,7 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FraudShield Visual Password Platform",
+  title: "WallNet-Sec Visual Password Platform",
   description:
     "Production-ready anti-phishing and anti-RAT visual password challenge platform for partner banking websites.",
 };
@@ -39,6 +40,7 @@ export default function RootLayout({
             {children}
           </div>
           <Toaster />
+          <Chatbot />
         </ThemeProvider>
       </body>
     </html>

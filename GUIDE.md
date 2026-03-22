@@ -60,7 +60,7 @@ Minimum values to set in `backend/.env`:
 ```env
 NODE_ENV=development
 PORT=3000
-MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+MONGODB_URI=mongodb://127.0.0.1:27017/wallnet-sec
 VISUAL_DATA_ENCRYPTION_KEY=replace-with-a-long-random-secret-min-32-chars
 TOKEN_SECRET=replace-with-a-long-random-secret-min-32-chars
 CORS_ORIGIN=http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004
@@ -91,10 +91,10 @@ DEMO_BANK_URL=http://localhost:3002
 NEXT_PUBLIC_DEMO_BANK_URL=http://localhost:3002
 
 # Optional docs/examples rendering values
-FRAUDSHIELD_URL=http://localhost:3000
-FRAUDSHIELD_BASE_URL=http://localhost:3000
-FRAUDSHIELD_API_KEY=dev-partner-key-change-me
-FRAUDSHIELD_PARTNER_ID=hdfc_bank
+WALLNET_SEC_URL=http://localhost:3000
+WALLNET_SEC_BASE_URL=http://localhost:3000
+WALLNET_SEC_API_KEY=dev-partner-key-change-me
+WALLNET_SEC_PARTNER_ID=hdfc_bank
 APP_BASE_URL=http://localhost:3001
 ```
 
@@ -129,7 +129,7 @@ VISUAL_KEY_SECRET=secret_test_vps_xxxxxxxxxxxx
 DEMO_BANK_COOKIE_SECRET=change-demo-bank-cookie-secret
 DEMO_BANK_SESSION_HOURS=12
 DEMO_BANK_PENDING_MINUTES=10
-MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+MONGODB_URI=mongodb://127.0.0.1:27017/wallnet-sec
 ```
 
 Optional (agent OTP email):
@@ -170,7 +170,7 @@ VISUAL_KEY_SECRET=secret_test_vps_xxxxxxxxxxxx
 DEMO_SHOP_COOKIE_SECRET=change-demo-shop-cookie-secret-min-32-chars
 DEMO_SHOP_SESSION_HOURS=12
 DEMO_SHOP_PENDING_MINUTES=10
-MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+MONGODB_URI=mongodb://127.0.0.1:27017/wallnet-sec
 ```
 
 ### 3.5 Demo Wallet
@@ -193,7 +193,7 @@ VISUAL_API_KEY=dev-partner-key-change-me
 DEMO_WALLET_COOKIE_SECRET=change-demo-wallet-cookie-secret
 DEMO_WALLET_SESSION_HOURS=12
 DEMO_WALLET_PENDING_MINUTES=10
-MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+MONGODB_URI=mongodb://127.0.0.1:27017/wallnet-sec
 ```
 
 ### 3.6 Test Site (Crypto)
@@ -213,7 +213,7 @@ VISUAL_KEY_SECRET=secret_test_vps_xxxxxxxxxxxx
 VISUAL_API_KEY=dev-partner-key-change-me
 
 COOKIE_SECRET=test-site-cookie-secret-change-me
-MONGODB_URI=mongodb://127.0.0.1:27017/fraudshield
+MONGODB_URI=mongodb://127.0.0.1:27017/wallnet-sec
 ```
 
 Important:
