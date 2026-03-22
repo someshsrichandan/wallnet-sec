@@ -1,10 +1,16 @@
 const VisualSession = require("../models/visualSession.model");
 const VisualCredential = require("../models/visualCredential.model");
+const VisualEnrollSession = require("../models/visualEnrollSession.model");
+const EmailSettings = require("../models/emailSettings.model");
 const PartnerKey = require("../models/partnerKey.model");
 const mongoose = require("mongoose");
+const nodemailer = require("nodemailer");
 const asyncHandler = require("../utils/asyncHandler");
+const HttpError = require("../utils/httpError");
 const {
+  assertEmail,
   assertRequiredString,
+  assertOptionalHttpUrl,
   assertOptionalString,
   assertInteger,
   parsePagination,
@@ -22,6 +28,46 @@ const getOwnedPartnerIds = async (ownerUserId) => {
   }
 
   return PartnerKey.distinct("partnerId", { ownerUserId, active: true });
+};
+
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+const maskEmailAddress = (email) => {
+  const normalized = String(email || "")
+    .trim()
+    .toLowerCase();
+  const [localRaw, domainRaw] = normalized.split("@");
+  if (!localRaw || !domainRaw) {
+    return "";
+  }
+
+  const local =
+    localRaw.length <= 2 ?
+      `${localRaw.slice(0, 1)}*`
+    : `${localRaw.slice(0, 2)}***`;
+  return `${local}@${domainRaw}`;
+};
+
+const buildResetEmailHtml = ({ fullName, resetUrl, expiresInMinutes }) => {
+  const safeName = String(fullName || "there").trim() || "there";
+  const safeUrl = String(resetUrl || "").trim();
+
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;max-width:640px;margin:0 auto;padding:20px;">
+      <h2 style="margin:0 0 12px;">Visual Password Reset</h2>
+      <p>Hi ${safeName},</p>
+      <p>Your admin has requested a visual password reset for your account.</p>
+      <p>
+        <a href="${safeUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;">
+          Reset Visual Password
+        </a>
+      </p>
+      <p>This link is valid for <strong>${expiresInMinutes} minutes</strong> from the time this email was sent.</p>
+      <p>If the button does not work, copy and paste this URL into your browser:</p>
+      <p style="word-break:break-all;color:#334155;">${safeUrl}</p>
+      <p style="margin-top:20px;color:#475569;">If you did not request this, please contact support.</p>
+    </div>
+  `;
 };
 
 const buildOwnerPartnerScope = (ownerUserId, partnerIds = []) => {
@@ -601,6 +647,116 @@ const getTrackedUsers = asyncHandler(async (req, res) => {
   });
 });
 
+const sendTrackedUserVisualResetEmail = asyncHandler(async (req, res) => {
+  const ownerUserId = assertRequiredString("auth.sub", req.auth?.sub, {
+    min: 8,
+    max: 120,
+  });
+
+  const partnerId = String(
+    assertRequiredString("partnerId", req.body.partnerId, { min: 3, max: 80 }),
+  )
+    .trim()
+    .toLowerCase();
+  const userId = String(
+    assertRequiredString("userId", req.body.userId, { min: 3, max: 120 }),
+  )
+    .trim()
+    .toLowerCase();
+  const email = assertEmail(req.body.email);
+  const fullName =
+    assertOptionalString("fullName", req.body.fullName, { max: 120 }) ||
+    "there";
+  const appBaseUrlRaw = assertOptionalHttpUrl(
+    "appBaseUrl",
+    req.body.appBaseUrl,
+  );
+
+  const ownedPartnerIds = await getOwnedPartnerIds(ownerUserId);
+  if (!ownedPartnerIds.includes(partnerId)) {
+    throw new HttpError(
+      403,
+      "You can only reset users for your own partner apps",
+    );
+  }
+
+  const credential = await VisualCredential.findOne({
+    partnerId,
+    userId,
+    active: true,
+  }).lean();
+  if (!credential) {
+    throw new HttpError(404, "No enrolled visual profile found for this user");
+  }
+
+  const appBaseUrl = appBaseUrlRaw || "http://localhost:3001";
+  const session = await VisualEnrollSession.createSession({
+    partnerId,
+    userId,
+    callbackUrl: null,
+    partnerState: null,
+    ttlMs: FIVE_MINUTES_MS,
+  });
+
+  const resetUrl = `${appBaseUrl.replace(/\/$/, "")}/enroll/${encodeURIComponent(session.enrollToken)}`;
+  let emailSettings = await EmailSettings.findOne({
+    partnerId,
+    enabled: true,
+  });
+
+  // Fallback to owner's latest enabled SMTP profile so admin reset can still work
+  // when the tracked user's partner does not have dedicated settings saved yet.
+  if (!emailSettings) {
+    emailSettings = await EmailSettings.findOne({
+      ownerUserId,
+      enabled: true,
+    }).sort({ updatedAt: -1 });
+  }
+
+  if (!emailSettings) {
+    throw new HttpError(
+      400,
+      "Email settings are not configured. Save SMTP settings in Admin > Settings first.",
+    );
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: emailSettings.emailHost,
+    port: Number(emailSettings.emailPort || 587),
+    secure: Number(emailSettings.emailPort || 587) === 465,
+    auth: {
+      user: emailSettings.emailUser,
+      pass: String(emailSettings.emailPass || ""),
+    },
+  });
+
+  await transporter.sendMail({
+    from: `"${emailSettings.fromName || "Visual Security"}" <${emailSettings.emailUser}>`,
+    to: email,
+    bcc: emailSettings.emailTo || undefined,
+    subject: "Reset your visual password",
+    text:
+      `Hi ${fullName},\n\n` +
+      "Your admin requested a visual password reset.\n" +
+      `Use this link within 5 minutes: ${resetUrl}\n\n` +
+      "If you did not request this, please contact support.",
+    html: buildResetEmailHtml({
+      fullName,
+      resetUrl,
+      expiresInMinutes: 5,
+    }),
+  });
+
+  res.status(201).json({
+    ok: true,
+    message: "Reset visual password email sent",
+    partnerId,
+    userId,
+    emailMasked: maskEmailAddress(email),
+    expiresAt: session.expiresAt,
+  });
+});
+
 module.exports = {
   getDashboardStats,
   getThreatFeed,
@@ -608,4 +764,5 @@ module.exports = {
   getAuditLogs,
   getSessionAnalytics,
   getTrackedUsers,
+  sendTrackedUserVisualResetEmail,
 };

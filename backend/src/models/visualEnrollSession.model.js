@@ -1,4 +1,4 @@
-const { Schema, model } = require('mongoose');
+const { Schema, model } = require("mongoose");
 
 const ENROLL_SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -11,19 +11,29 @@ const visualEnrollSessionSchema = new Schema(
     partnerState: { type: String, default: null },
     status: {
       type: String,
-      enum: ['PENDING', 'COMPLETED', 'EXPIRED'],
-      default: 'PENDING',
+      enum: ["PENDING", "COMPLETED", "EXPIRED"],
+      default: "PENDING",
     },
     expiresAt: { type: Date, required: true },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 visualEnrollSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-visualEnrollSessionSchema.statics.createSession = function ({ partnerId, userId, callbackUrl, partnerState }) {
-  const { randomUUID } = require('crypto');
-  const expiresAt = new Date(Date.now() + ENROLL_SESSION_TTL_MS);
+visualEnrollSessionSchema.statics.createSession = function ({
+  partnerId,
+  userId,
+  callbackUrl,
+  partnerState,
+  ttlMs,
+}) {
+  const { randomUUID } = require("crypto");
+  const resolvedTtlMs =
+    Number.isFinite(ttlMs) && Number(ttlMs) > 0 ?
+      Number(ttlMs)
+    : ENROLL_SESSION_TTL_MS;
+  const expiresAt = new Date(Date.now() + resolvedTtlMs);
   return this.create({
     enrollToken: randomUUID(),
     partnerId,
@@ -34,4 +44,4 @@ visualEnrollSessionSchema.statics.createSession = function ({ partnerId, userId,
   });
 };
 
-module.exports = model('VisualEnrollSession', visualEnrollSessionSchema);
+module.exports = model("VisualEnrollSession", visualEnrollSessionSchema);

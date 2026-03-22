@@ -10,5 +10,9 @@ router.get("/timeline", dashboardController.getTimelineData);
 router.get("/audit-logs", dashboardController.getAuditLogs);
 router.get("/analytics", dashboardController.getSessionAnalytics);
 router.get("/users", dashboardController.getTrackedUsers);
+router.post(
+  "/users/reset-visual-password",
+  dashboardController.sendTrackedUserVisualResetEmail,
+);
 
 module.exports = router;

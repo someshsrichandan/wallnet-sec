@@ -92,6 +92,15 @@ type TrackedUser = {
   lastConsumedAt?: string;
 };
 
+type SendVisualResetResponse = {
+  ok: boolean;
+  message: string;
+  partnerId: string;
+  userId: string;
+  emailMasked: string;
+  expiresAt: string;
+};
+
 const DASHBOARD_TABS = [
   "overview",
   "threats",
@@ -192,6 +201,7 @@ export default function DashboardPage() {
   const [bankUsers, setBankUsers] = useState<TrackedUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [userSearch, setUserSearch] = useState("");
+  const [resettingUserId, setResettingUserId] = useState("");
 
   useEffect(() => {
     const stored = localStorage.getItem("authToken");
@@ -259,6 +269,54 @@ export default function DashboardPage() {
       setUsersLoading(false);
     }
   }, [token]);
+
+  const sendVisualResetEmail = useCallback(
+    async (user: TrackedUser) => {
+      if (!token) {
+        toast.error("Login is required to send reset email.");
+        return;
+      }
+
+      if (!user.email) {
+        toast.error("This user has no email address available.");
+        return;
+      }
+
+      try {
+        setResettingUserId(user.id);
+        const response = await requestJson<SendVisualResetResponse>(
+          "/api/dashboard/users/reset-visual-password",
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              partnerId: user.partnerId,
+              userId: user.userId,
+              email: user.email,
+              fullName: user.fullName,
+              appBaseUrl: window.location.origin,
+            }),
+          },
+        );
+
+        const expiresAtLabel = new Date(response.expiresAt).toLocaleTimeString(
+          "en-IN",
+        );
+        toast.success(
+          `Reset link emailed to ${response.emailMasked}. Expires at ${expiresAtLabel}.`,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ?
+            error.message
+          : "Failed to send visual reset email.",
+        );
+      } finally {
+        setResettingUserId("");
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
     fetchData();
@@ -1166,6 +1224,9 @@ export default function DashboardPage() {
                               <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                                 Last Seen
                               </th>
+                              <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Actions
+                              </th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border">
@@ -1258,6 +1319,32 @@ export default function DashboardPage() {
                                       <div className="text-muted-foreground">
                                         status {u.lastStatus}
                                       </div>
+                                    </td>
+                                    <td className="py-2.5 px-4">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={
+                                          !u.email || resettingUserId === u.id
+                                        }
+                                        onClick={() => sendVisualResetEmail(u)}
+                                        title={
+                                          u.email ?
+                                            "Send reset visual password email"
+                                          : "No email available for this user"
+                                        }
+                                      >
+                                        {resettingUserId === u.id ?
+                                          <>
+                                            <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                            Sending...
+                                          </>
+                                        : <>
+                                            <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                                            Reset Visual
+                                          </>
+                                        }
+                                      </Button>
                                     </td>
                                   </tr>
                                 );
