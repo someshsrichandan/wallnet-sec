@@ -210,7 +210,9 @@ const resolveCredentialChallengeConfig = (credential) => {
 
 const buildSessionPartnerRedirect = (session) => {
   if (!session.callbackUrl) {
-    return "";
+    // If no callback URL is provided, redirect to a reasonable fallback
+    // In many cases, this happens during the main SaaS login or a misconfigured partner.
+    return "/admin/login";
   }
 
   return buildPartnerRedirectUrl(session.callbackUrl, {
@@ -576,7 +578,10 @@ const getChallenge = asyncHandler(async (req, res) => {
   const requestFingerprint = createRequestFingerprint(req);
   if (!session.requestFingerprint) {
     session.requestFingerprint = requestFingerprint;
-  } else if (session.requestFingerprint !== requestFingerprint) {
+  } else if (
+    env.isProduction &&
+    session.requestFingerprint !== requestFingerprint
+  ) {
     throw new HttpError(
       403,
       "Challenge can only be loaded from the original browser/device",
@@ -681,8 +686,9 @@ const verify = asyncHandler(async (req, res) => {
 
   const requestFingerprint = createRequestFingerprint(req);
   if (
-    !session.requestFingerprint ||
-    session.requestFingerprint !== requestFingerprint
+    env.isProduction &&
+    (!session.requestFingerprint ||
+      session.requestFingerprint !== requestFingerprint)
   ) {
     throw new HttpError(
       403,

@@ -39,7 +39,7 @@ export function SiteNav() {
             <div className="h-2 w-2 rounded-full bg-white dark:bg-[#020205]" />
           </div>
           <span className="block text-[14px] font-semibold tracking-tight text-slate-900 dark:text-white">
-            FraudShield.
+            WallNet-Sec
           </span>
         </Link>
 

@@ -21,7 +21,7 @@ const apiEndpoints = [
     id: "init-auth",
     method: "POST",
     path: "/api/product/v1/init-auth",
-    badge: "Partner Backend → FraudShield",
+    badge: "Partner Backend → WallNet-Sec",
     purpose:
       "Start a visual verification session after the user has logged in on the partner site.",
     headers: `Content-Type: application/json
@@ -48,7 +48,7 @@ x-api-key: YOUR_API_KEY`,
     id: "challenge",
     method: "GET",
     path: "/api/product/v1/challenge/:sessionToken",
-    badge: "FraudShield Hosted UI (internal)",
+    badge: "WallNet-Sec Hosted UI (internal)",
     purpose:
       "Fetch the visual challenge data. Used by our hosted verification page — partners do NOT call this.",
     headers: `— (no API key required, session-bound)`,
@@ -75,7 +75,7 @@ x-api-key: YOUR_API_KEY`,
     id: "verify",
     method: "POST",
     path: "/api/product/v1/verify",
-    badge: "FraudShield Hosted UI (internal)",
+    badge: "WallNet-Sec Hosted UI (internal)",
     purpose:
       "Submit user answers. Used by our hosted verification page — partners do NOT call this.",
     headers: `Content-Type: application/json`,
@@ -107,7 +107,7 @@ x-api-key: YOUR_API_KEY`,
     id: "consume-result",
     method: "POST",
     path: "/api/product/v1/partner/consume-result",
-    badge: "Partner Backend → FraudShield (MANDATORY)",
+    badge: "Partner Backend → WallNet-Sec (MANDATORY)",
     purpose:
       "Validate the signed verification result. This is the ONLY way to confirm a PASS.",
     headers: `Content-Type: application/json
@@ -135,7 +135,7 @@ x-api-key: YOUR_API_KEY`,
     id: "session-status",
     method: "GET",
     path: "/api/product/v1/session/:sessionToken",
-    badge: "Partner Backend → FraudShield (optional)",
+    badge: "Partner Backend → WallNet-Sec (optional)",
     purpose:
       "Check session status for polling, audit trails, or troubleshooting.",
     headers: `x-api-key: YOUR_API_KEY`,
@@ -193,7 +193,7 @@ const quickStartSteps = [
     num: "1",
     title: "Get Your Credentials",
     detail:
-      "Contact the FraudShield team to receive your partnerId and API key. You'll get separate keys for test and live environments.",
+      "Contact the WallNet-Sec team to receive your partnerId and API key. You'll get separate keys for test and live environments.",
   },
   {
     num: "2",
@@ -289,9 +289,9 @@ const flowModes = [
     steps: [
       "User clicks login on partner site → partner validates username/password.",
       "Partner backend calls init-auth → gets verifyPath.",
-      "Partner redirects user to FraudShield: 302 → /verify/:sessionToken.",
-      "User solves visual challenge on FraudShield hosted page.",
-      "FraudShield redirects back to callbackUrl with result + signature + state.",
+      "Partner redirects user to WallNet-Sec: 302 → /verify/:sessionToken.",
+      "User solves visual challenge on WallNet-Sec hosted page.",
+      "WallNet-Sec redirects back to callbackUrl with result + signature + state.",
       "Partner backend calls consume-result to validate → creates session on PASS.",
     ],
     pros: "Simple, works everywhere. No popup blocking issues.",
@@ -317,12 +317,12 @@ const codeSnippetsByLang: Record<string, { label: string; initAuth: string; cons
     label: "Node.js",
     initAuth: `// Node.js — Start visual verification
 const res = await fetch(
-  \`\${process.env.FRAUDSHIELD_URL}/api/product/v1/init-auth?mode=live\`,
+  \`\${process.env.WALLNET_SEC_URL}/api/product/v1/init-auth?mode=live\`,
   {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": process.env.FRAUDSHIELD_API_KEY,
+      "x-api-key": process.env.WALLNET_SEC_API_KEY,
     },
     body: JSON.stringify({
       partnerId: "your_company",
@@ -336,12 +336,12 @@ const { sessionToken, verifyPath } = await res.json();
 res.redirect(verifyPath);`,
     consumeResult: `// Node.js — Validate result
 const res = await fetch(
-  \`\${process.env.FRAUDSHIELD_URL}/api/product/v1/partner/consume-result?mode=live\`,
+  \`\${process.env.WALLNET_SEC_URL}/api/product/v1/partner/consume-result?mode=live\`,
   {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": process.env.FRAUDSHIELD_API_KEY,
+      "x-api-key": process.env.WALLNET_SEC_API_KEY,
     },
     body: JSON.stringify({ signature }),
   }
@@ -353,10 +353,10 @@ if (result === "PASS") createSession(userId);`,
     label: "Python",
     initAuth: `# Python — Start visual verification
 response = requests.post(
-    f"{FRAUDSHIELD_URL}/api/product/v1/init-auth?mode=live",
+    f"{WALLNET_SEC_URL}/api/product/v1/init-auth?mode=live",
     headers={
         "Content-Type": "application/json",
-        "x-api-key": FRAUDSHIELD_API_KEY,
+        "x-api-key": WALLNET_SEC_API_KEY,
     },
     json={
         "partnerId": "your_company",
@@ -369,10 +369,10 @@ data = response.json()
 return redirect(data["verifyPath"])`,
     consumeResult: `# Python — Validate result
 response = requests.post(
-    f"{FRAUDSHIELD_URL}/api/product/v1/partner/consume-result?mode=live",
+    f"{WALLNET_SEC_URL}/api/product/v1/partner/consume-result?mode=live",
     headers={
         "Content-Type": "application/json",
-        "x-api-key": FRAUDSHIELD_API_KEY,
+        "x-api-key": WALLNET_SEC_API_KEY,
     },
     json={"signature": signature},
 )
@@ -391,7 +391,7 @@ Map<String, Object> body = Map.of(
 );
 
 Map<String, Object> data = webClient.post()
-    .uri(fraudshieldUrl + "/api/product/v1/init-auth?mode=live")
+    .uri(wallnetSecUrl + "/api/product/v1/init-auth?mode=live")
     .header("x-api-key", apiKey)
     .bodyValue(body)
     .retrieve()
@@ -401,7 +401,7 @@ Map<String, Object> data = webClient.post()
 return "redirect:" + data.get("verifyPath");`,
     consumeResult: `// Java — Validate result
 Map<String, Object> data = webClient.post()
-    .uri(fraudshieldUrl + "/api/product/v1/partner/consume-result?mode=live")
+    .uri(wallnetSecUrl + "/api/product/v1/partner/consume-result?mode=live")
     .header("x-api-key", apiKey)
     .bodyValue(Map.of("signature", signature))
     .retrieve()
@@ -415,7 +415,7 @@ if ("PASS".equals(data.get("result"))) {
   php: {
     label: "PHP",
     initAuth: `<?php // PHP — Start visual verification
-$ch = curl_init("$fraudshieldUrl/api/product/v1/init-auth?mode=live");
+$ch = curl_init("$wallnetSecUrl/api/product/v1/init-auth?mode=live");
 curl_setopt_array($ch, [
     CURLOPT_POST => true,
     CURLOPT_HTTPHEADER => [
@@ -433,7 +433,7 @@ curl_setopt_array($ch, [
 $data = json_decode(curl_exec($ch), true);
 header("Location: " . $data["verifyPath"]);`,
     consumeResult: `<?php // PHP — Validate result
-$ch = curl_init("$fraudshieldUrl/api/product/v1/partner/consume-result?mode=live");
+$ch = curl_init("$wallnetSecUrl/api/product/v1/partner/consume-result?mode=live");
 curl_setopt_array($ch, [
     CURLOPT_POST => true,
     CURLOPT_HTTPHEADER => [
@@ -452,7 +452,7 @@ if ($data["result"] === "PASS") {
     label: "ASP.NET",
     initAuth: `// ASP.NET (C#) — Start visual verification
 var response = await httpClient.PostAsJsonAsync(
-    $"{fraudshieldUrl}/api/product/v1/init-auth?mode=live",
+    $"{wallnetSecUrl}/api/product/v1/init-auth?mode=live",
     new {
         partnerId = "your_company",
         userId,
@@ -464,7 +464,7 @@ var data = await response.Content.ReadFromJsonAsync<InitAuthResponse>();
 return Redirect(data.VerifyPath);`,
     consumeResult: `// ASP.NET (C#) — Validate result
 var response = await httpClient.PostAsJsonAsync(
-    $"{fraudshieldUrl}/api/product/v1/partner/consume-result?mode=live",
+    $"{wallnetSecUrl}/api/product/v1/partner/consume-result?mode=live",
     new { signature }
 );
 var data = await response.Content.ReadFromJsonAsync<ConsumeResponse>();
@@ -483,7 +483,7 @@ payload, _ := json.Marshal(map[string]string{
 })
 
 req, _ := http.NewRequest("POST",
-    fraudshieldURL+"/api/product/v1/init-auth?mode=live",
+    wallnetSecUrl+"/api/product/v1/init-auth?mode=live",
     bytes.NewBuffer(payload),
 )
 req.Header.Set("Content-Type", "application/json")
@@ -497,7 +497,7 @@ http.Redirect(w, r, data.VerifyPath, http.StatusFound)`,
     consumeResult: `// Go — Validate result
 payload, _ := json.Marshal(map[string]string{"signature": signature})
 req, _ := http.NewRequest("POST",
-    fraudshieldURL+"/api/product/v1/partner/consume-result?mode=live",
+    wallnetSecUrl+"/api/product/v1/partner/consume-result?mode=live",
     bytes.NewBuffer(payload),
 )
 req.Header.Set("Content-Type", "application/json")
@@ -566,7 +566,7 @@ export default function DocsPage() {
         <Alert className="border-l-4 border-l-emerald-500 border-t border-r border-b border-emerald-100 bg-emerald-50/80 p-6 dark:bg-emerald-900/10 dark:border-emerald-900/50">
           <AlertTitle className="text-lg font-bold text-emerald-900 dark:text-emerald-400 mb-2">Base URL</AlertTitle>
           <AlertDescription className="text-base font-mono text-emerald-800 dark:text-emerald-400/90 break-all">
-            https://fraudshield.example.com/api/product/v1/
+            https://wallnet-sec.example.com/api/product/v1/
             <span className="block mt-2 font-sans text-sm text-emerald-700 dark:text-emerald-500">
               append <code className="rounded bg-emerald-200/50 px-1.5 py-0.5 font-bold mx-1 dark:bg-emerald-900/50">?mode=test</code> for sandbox
             </span>
@@ -825,15 +825,15 @@ export default function DocsPage() {
           </CardHeader>
           <CardContent>
             <pre className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-950 p-4 text-xs leading-relaxed text-slate-100">
-              {`# FraudShield integration
-FRAUDSHIELD_BASE_URL=https://fraudshield.example.com
-FRAUDSHIELD_API_KEY=pk_live_your-api-key-here
-FRAUDSHIELD_PARTNER_ID=your_company_id
+              {`# WallNet-Sec integration
+WALLNET_SEC_BASE_URL=https://wallnet-sec.example.com
+WALLNET_SEC_API_KEY=pk_live_your-api-key-here
+WALLNET_SEC_PARTNER_ID=your_company_id
 APP_BASE_URL=https://your-app.example.com
 
 # Sandbox (optional, for ?mode=test)
-FRAUDSHIELD_SANDBOX_URL=https://sandbox.fraudshield.example.com
-FRAUDSHIELD_SANDBOX_API_KEY=pk_test_your-sandbox-key
+WALLNET_SEC_SANDBOX_URL=https://sandbox.wallnet-sec.example.com
+WALLNET_SEC_SANDBOX_API_KEY=pk_test_your-sandbox-key
 
 # Next.js frontend proxy (if using our starter template)
 BACKEND_API_BASE_URL=http://localhost:3000/api

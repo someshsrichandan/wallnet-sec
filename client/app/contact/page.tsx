@@ -23,7 +23,7 @@ export default function ContactPage() {
              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
                 Interested in our Enterprise plan with custom integrations?
              </p>
-             <p className="mt-4 font-semibold text-indigo-600 dark:text-indigo-400">sales@fraudshield.com</p>
+             <p className="mt-4 font-semibold text-indigo-600 dark:text-indigo-400">sales@wallnet-sec.com</p>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-8 dark:border-slate-800 dark:bg-slate-900/50">
@@ -34,7 +34,7 @@ export default function ContactPage() {
              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
                 need help integrating or debugging your flow?
              </p>
-             <p className="mt-4 font-semibold text-emerald-600 dark:text-emerald-400">support@fraudshield.com</p>
+             <p className="mt-4 font-semibold text-emerald-600 dark:text-emerald-400">support@wallnet-sec.com</p>
           </div>
         </div>
 

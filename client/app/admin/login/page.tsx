@@ -83,11 +83,11 @@ export default function AdminLogin() {
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center mb-4">
             <div className="h-14 w-14 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground text-2xl font-black shadow-2xl shadow-primary/20 transition-transform hover:scale-105">
-              FS
+              WN
             </div>
           </div>
           <h2 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            Partner Console
+            WallNet-Sec Console
           </h2>
           <p className="text-muted-foreground text-sm font-medium">
             Login to your visual security command center
@@ -176,7 +176,7 @@ export default function AdminLogin() {
           </CardContent>
           <CardFooter className="flex flex-col gap-4 border-t border-border/40 bg-muted/30 p-6">
             <p className="text-sm text-muted-foreground text-center">
-              New to FraudShield?{" "}
+              New to WallNet-Sec?{" "}
               <Link
                 href="/admin/signup"
                 className="font-bold text-primary hover:text-primary/80 transition-colors"
