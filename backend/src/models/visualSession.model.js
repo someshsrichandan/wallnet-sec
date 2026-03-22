@@ -119,6 +119,10 @@ const visualSessionSchema = new Schema(
     consumedAt: { type: Date, default: null },
     verifiedAt: { type: Date, default: null },
     lastAttemptAt: { type: Date, default: null },
+    aiShadowSnapshot: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
     expiresAt: { type: Date, required: true },
   },
   {

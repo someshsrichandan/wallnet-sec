@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Activity,
+  Bot,
   BarChart3,
   Key,
   Database,
@@ -55,6 +56,16 @@ const data = {
       title: "Authentication Logs",
       url: "/admin/dashboard/authentication-logs",
       icon: Users,
+    },
+    {
+      title: "AI Runtime",
+      url: "/admin/dashboard/ai-runtime",
+      icon: Bot,
+    },
+    {
+      title: "AI Shadow",
+      url: "/admin/dashboard/ai-shadow",
+      icon: Shield,
     },
   ],
   navClouds: [],

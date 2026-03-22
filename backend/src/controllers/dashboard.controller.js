@@ -4,6 +4,7 @@ const VisualEnrollSession = require("../models/visualEnrollSession.model");
 const EmailSettings = require("../models/emailSettings.model");
 const PartnerKey = require("../models/partnerKey.model");
 const AuditLog = require("../models/auditLog.model");
+const env = require("../config/env");
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
 const asyncHandler = require("../utils/asyncHandler");
@@ -32,6 +33,308 @@ const getOwnedPartnerIds = async (ownerUserId) => {
 };
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+const getAiRuntimeStatus = asyncHandler(async (req, res) => {
+  const ownerUserId = req.auth.sub;
+  const ownedPartnerIds = await getOwnedPartnerIds(ownerUserId);
+  const aiFeatures = req.ai?.features || {};
+  const providerSupported = ["openai", "gemini"].includes(env.aiProvider);
+
+  const checks = {
+    providerSupported,
+    modelConfigured: Boolean(env.aiModel),
+    apiKeyConfigured: Boolean(env.aiApiKey),
+    timeoutConfigured: Number.isFinite(env.aiTimeoutMs) && env.aiTimeoutMs > 0,
+    retriesConfigured:
+      Number.isFinite(env.aiMaxRetries) && Number(env.aiMaxRetries) >= 0,
+  };
+
+  const readyForCalls =
+    !env.aiEnabled ||
+    (checks.providerSupported &&
+      checks.modelConfigured &&
+      checks.apiKeyConfigured &&
+      checks.timeoutConfigured &&
+      checks.retriesConfigured);
+
+  res.json({
+    ai: {
+      enabled: Boolean(env.aiEnabled),
+      readyForCalls,
+      provider: env.aiProvider,
+      model: env.aiModel,
+      timeoutMs: env.aiTimeoutMs,
+      maxRetries: env.aiMaxRetries,
+      features: {
+        fraudShadowMode: Boolean(aiFeatures.fraudShadowMode),
+        fraudEnforcementMode: Boolean(aiFeatures.fraudEnforcementMode),
+        threatSummaryEnabled: Boolean(aiFeatures.threatSummaryEnabled),
+        partnerAssistantEnabled: Boolean(aiFeatures.partnerAssistantEnabled),
+      },
+      checks,
+      diagnostics: {
+        apiKeyPresent: checks.apiKeyConfigured,
+        callbackCount: ownedPartnerIds.length,
+        callbackAllowlistConfigured: env.partnerCallbackAllowlist.length > 0,
+      },
+    },
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+const getAiShadowAnalytics = asyncHandler(async (req, res) => {
+  const ownerUserId = req.auth.sub;
+  const partnerIds = await getOwnedPartnerIds(ownerUserId);
+  const scopeParam = String(req.query.scope || "")
+    .trim()
+    .toLowerCase();
+  const allowAllScope = env.nodeEnv !== "production";
+  const useAllScope = allowAllScope && scopeParam !== "owner";
+  const ownerPartnerScope =
+    useAllScope ? {} : buildOwnerPartnerScope(ownerUserId, partnerIds);
+  const hours =
+    req.query.hours ?
+      assertInteger("hours", req.query.hours, { min: 1, max: 720 })
+    : 24;
+  const limit =
+    req.query.limit ?
+      assertInteger("limit", req.query.limit, { min: 1, max: 200 })
+    : 50;
+
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const match = {
+    ...ownerPartnerScope,
+    action: "AI_FRAUD_ASSESSMENT",
+    createdAt: { $gte: since },
+  };
+
+  const [summaryRows, aiActions, deterministicActions, recent] =
+    await Promise.all([
+      AuditLog.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            fallbackCount: {
+              $sum: {
+                $cond: [{ $eq: ["$metadata.ok", false] }, 1, 0],
+              },
+            },
+            disagreementCount: {
+              $sum: {
+                $cond: [
+                  { $eq: ["$metadata.disagreedWithDeterministic", true] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            avgLatencyMs: { $avg: "$metadata.latencyMs" },
+            avgRiskScore: { $avg: "$metadata.decision.riskScore" },
+          },
+        },
+      ]),
+      AuditLog.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: "$metadata.aiAction",
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } },
+      ]),
+      AuditLog.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: "$metadata.deterministicAction",
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } },
+      ]),
+      AuditLog.find(match)
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .select(
+          "action severity partnerId userId sessionToken createdAt metadata",
+        )
+        .lean(),
+    ]);
+
+  const summary = summaryRows[0] || {
+    total: 0,
+    fallbackCount: 0,
+    disagreementCount: 0,
+    avgLatencyMs: 0,
+    avgRiskScore: 0,
+  };
+
+  let total = Number(summary.total || 0);
+  let fallbackCount = Number(summary.fallbackCount || 0);
+  let disagreementCount = Number(summary.disagreementCount || 0);
+  let avgLatencyMs = Math.round(Number(summary.avgLatencyMs || 0));
+  let avgRiskScore = Math.round(Number(summary.avgRiskScore || 0));
+  let aiActionDistribution = aiActions;
+  let deterministicDistribution = deterministicActions;
+  let recentRows = recent;
+  let source = "audit";
+
+  const sessionFlowMatch = {
+    ...ownerPartnerScope,
+    createdAt: { $gte: since },
+  };
+
+  const [sessionFlowRows, verifyTotal] = await Promise.all([
+    VisualSession.aggregate([
+      { $match: sessionFlowMatch },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+    VisualSession.countDocuments({
+      ...ownerPartnerScope,
+      lastAttemptAt: { $gte: since },
+    }),
+  ]);
+
+  const sessionFlowMap = new Map(
+    sessionFlowRows.map((row) => [String(row._id), Number(row.count || 0)]),
+  );
+  const initAuthCount =
+    Number(sessionFlowMap.get("PENDING") || 0) +
+    Number(sessionFlowMap.get("PASS") || 0) +
+    Number(sessionFlowMap.get("FAIL") || 0) +
+    Number(sessionFlowMap.get("LOCKED") || 0) +
+    Number(sessionFlowMap.get("EXPIRED") || 0);
+  const verifyPassCount = Number(sessionFlowMap.get("PASS") || 0);
+  const verifyFailCount = Number(sessionFlowMap.get("FAIL") || 0);
+  const verifyLockedCount = Number(sessionFlowMap.get("LOCKED") || 0);
+
+  if (total === 0) {
+    const sessionAiMatch = {
+      ...ownerPartnerScope,
+      "aiShadowSnapshot.at": { $gte: since },
+    };
+
+    const sessionAssessments = await VisualSession.find(sessionAiMatch)
+      .sort({ "aiShadowSnapshot.at": -1 })
+      .limit(limit)
+      .select("partnerId userId sessionToken createdAt aiShadowSnapshot")
+      .lean();
+
+    if (sessionAssessments.length > 0) {
+      source = "session";
+      total = sessionAssessments.length;
+
+      const actionMap = new Map();
+      const deterministicMap = new Map();
+      let latencySum = 0;
+      let latencyCount = 0;
+      let riskSum = 0;
+      let riskCount = 0;
+
+      for (const row of sessionAssessments) {
+        const snapshot = row.aiShadowSnapshot || {};
+        const aiAction = String(snapshot.aiAction || "").toUpperCase();
+        const deterministicAction = String(
+          snapshot.deterministicAction || "",
+        ).toUpperCase();
+        if (aiAction) {
+          actionMap.set(aiAction, Number(actionMap.get(aiAction) || 0) + 1);
+        }
+        if (deterministicAction) {
+          deterministicMap.set(
+            deterministicAction,
+            Number(deterministicMap.get(deterministicAction) || 0) + 1,
+          );
+        }
+
+        if (snapshot.fallbackUsed) {
+          fallbackCount += 1;
+        }
+        if (snapshot.disagreedWithDeterministic) {
+          disagreementCount += 1;
+        }
+
+        const latency = Number(snapshot.latencyMs);
+        if (Number.isFinite(latency) && latency >= 0) {
+          latencySum += latency;
+          latencyCount += 1;
+        }
+
+        const risk = Number(snapshot?.decision?.riskScore);
+        if (Number.isFinite(risk) && risk >= 0) {
+          riskSum += risk;
+          riskCount += 1;
+        }
+      }
+
+      avgLatencyMs =
+        latencyCount > 0 ? Math.round(latencySum / latencyCount) : 0;
+      avgRiskScore = riskCount > 0 ? Math.round(riskSum / riskCount) : 0;
+
+      aiActionDistribution = [...actionMap.entries()]
+        .map(([key, count]) => ({ _id: key, count }))
+        .sort((a, b) => b.count - a.count);
+      deterministicDistribution = [...deterministicMap.entries()]
+        .map(([key, count]) => ({ _id: key, count }))
+        .sort((a, b) => b.count - a.count);
+
+      recentRows = sessionAssessments.map((row) => ({
+        action: "AI_FRAUD_ASSESSMENT",
+        severity: "INFO",
+        partnerId: row.partnerId,
+        userId: row.userId,
+        sessionToken: row.sessionToken,
+        createdAt: row.aiShadowSnapshot?.at || row.createdAt,
+        metadata: row.aiShadowSnapshot,
+      }));
+    }
+  }
+
+  res.json({
+    window: {
+      hours,
+      since,
+      generatedAt: new Date().toISOString(),
+    },
+    scope: useAllScope ? "all" : "owner",
+    summary: {
+      total,
+      fallbackCount,
+      disagreementCount,
+      fallbackRate:
+        total > 0 ? Math.round((fallbackCount / total) * 1000) / 10 : 0,
+      disagreementRate:
+        total > 0 ? Math.round((disagreementCount / total) * 1000) / 10 : 0,
+      avgLatencyMs,
+      avgRiskScore,
+    },
+    distributions: {
+      aiAction: aiActionDistribution,
+      deterministicAction: deterministicDistribution,
+    },
+    source,
+    flowHealth: {
+      initAuthCount,
+      verifyPassCount,
+      verifyFailCount,
+      verifyLockedCount,
+      verifyTotal,
+    },
+    noDataHint:
+      total === 0 ?
+        "No AI assessments found in this window. Verify traffic is present, then complete one new verify cycle after backend restart to populate aiShadowSnapshot."
+      : undefined,
+    recent: recentRows,
+  });
+});
 
 const maskEmailAddress = (email) => {
   const normalized = String(email || "")
@@ -275,6 +578,11 @@ const getTimelineData = asyncHandler(async (req, res) => {
 const getAuditLogs = asyncHandler(async (req, res) => {
   const ownerUserId = req.auth.sub;
   const partnerIds = await getOwnedPartnerIds(ownerUserId);
+  const scopeParam = String(req.query.scope || "")
+    .trim()
+    .toLowerCase();
+  const allowAllScope = env.nodeEnv !== "production";
+  const useAllScope = allowAllScope && scopeParam !== "owner";
   const { limit, skip } = parsePagination(req.query, {
     defaultLimit: 50,
     maxLimit: 200,
@@ -298,8 +606,8 @@ const getAuditLogs = asyncHandler(async (req, res) => {
 
   const result = await queryLogs({
     partnerId,
-    ownerUserId,
-    partnerIds,
+    ownerUserId: useAllScope ? undefined : ownerUserId,
+    partnerIds: useAllScope ? [] : partnerIds,
     action,
     actions,
     severity,
@@ -316,10 +624,13 @@ const getAuditLogs = asyncHandler(async (req, res) => {
 const getSessionAnalytics = asyncHandler(async (req, res) => {
   const ownerUserId = req.auth.sub;
   const ownedPartnerIds = await getOwnedPartnerIds(ownerUserId);
-  const ownerPartnerScope = buildOwnerPartnerScope(
-    ownerUserId,
-    ownedPartnerIds,
-  );
+  const scopeParam = String(req.query.scope || "")
+    .trim()
+    .toLowerCase();
+  const allowAllScope = env.nodeEnv !== "production";
+  const useAllScope = allowAllScope && scopeParam !== "owner";
+  const ownerPartnerScope =
+    useAllScope ? {} : buildOwnerPartnerScope(ownerUserId, ownedPartnerIds);
   const days =
     req.query.days ?
       assertInteger("days", req.query.days, { min: 1, max: 90 })
@@ -341,21 +652,41 @@ const getSessionAnalytics = asyncHandler(async (req, res) => {
       { $match: { ...ownerPartnerScope, createdAt: { $gte: since } } },
       { $group: { _id: "$catalogType", count: { $sum: 1 } } },
     ]),
-    VisualSession.aggregate([
-      { $match: { ...ownerPartnerScope, createdAt: { $gte: since } } },
+    AuditLog.aggregate([
+      {
+        $match: {
+          ...ownerPartnerScope,
+          createdAt: { $gte: since },
+          action: {
+            $in: ["INIT_AUTH", "VERIFY_PASS", "VERIFY_FAIL", "SESSION_LOCKED"],
+          },
+        },
+      },
       {
         $group: {
           _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          total: { $sum: 1 },
-          passed: { $sum: { $cond: [{ $eq: ["$status", "PASS"] }, 1, 0] } },
-          failed: { $sum: { $cond: [{ $eq: ["$status", "FAIL"] }, 1, 0] } },
-          locked: { $sum: { $cond: [{ $eq: ["$status", "LOCKED"] }, 1, 0] } },
+          total: { $sum: { $cond: [{ $eq: ["$action", "INIT_AUTH"] }, 1, 0] } },
+          passed: {
+            $sum: { $cond: [{ $eq: ["$action", "VERIFY_PASS"] }, 1, 0] },
+          },
+          failed: {
+            $sum: { $cond: [{ $eq: ["$action", "VERIFY_FAIL"] }, 1, 0] },
+          },
+          locked: {
+            $sum: { $cond: [{ $eq: ["$action", "SESSION_LOCKED"] }, 1, 0] },
+          },
         },
       },
       { $sort: { _id: 1 } },
     ]),
-    VisualSession.aggregate([
-      { $match: { ...ownerPartnerScope, createdAt: { $gte: since } } },
+    AuditLog.aggregate([
+      {
+        $match: {
+          ...ownerPartnerScope,
+          createdAt: { $gte: since },
+          action: "INIT_AUTH",
+        },
+      },
       { $group: { _id: "$partnerId", count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $limit: 10 },
@@ -785,6 +1116,8 @@ const sendTrackedUserVisualResetEmail = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  getAiShadowAnalytics,
+  getAiRuntimeStatus,
   getDashboardStats,
   getThreatFeed,
   getTimelineData,
