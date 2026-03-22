@@ -577,7 +577,7 @@ const getChallenge = asyncHandler(async (req, res) => {
   if (!session.requestFingerprint) {
     session.requestFingerprint = requestFingerprint;
   } else if (
-    process.env.NODE_ENV !== "development" &&
+    env.isProduction &&
     session.requestFingerprint !== requestFingerprint
   ) {
     throw new HttpError(
@@ -684,7 +684,7 @@ const verify = asyncHandler(async (req, res) => {
 
   const requestFingerprint = createRequestFingerprint(req);
   if (
-    process.env.NODE_ENV !== "development" &&
+    env.isProduction &&
     (!session.requestFingerprint ||
       session.requestFingerprint !== requestFingerprint)
   ) {
