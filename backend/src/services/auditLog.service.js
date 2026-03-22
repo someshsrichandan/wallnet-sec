@@ -47,8 +47,9 @@ const sanitizeMetadata = (metadata) => {
 
 const applyOwnerFilter = (filter, ownerUserId, userId, partnerIds = []) => {
   if (ownerUserId) {
-    const scopedPartners = Array.isArray(partnerIds)
-      ? partnerIds.filter((item) => typeof item === "string" && item.trim())
+    const scopedPartners =
+      Array.isArray(partnerIds) ?
+        partnerIds.filter((item) => typeof item === "string" && item.trim())
       : [];
     const ownerScope = [{ ownerUserId }, { userId: ownerUserId }];
     if (scopedPartners.length) {
@@ -121,15 +122,27 @@ const queryLogs = async ({
   ownerUserId,
   userId,
   action,
+  actions,
   severity,
+  since,
   limit = 50,
   offset = 0,
 } = {}) => {
   const filter = {};
   if (partnerId) filter.partnerId = partnerId;
   applyOwnerFilter(filter, ownerUserId, userId, partnerIds);
-  if (action) filter.action = action;
+  if (Array.isArray(actions) && actions.length > 0) {
+    filter.action = { $in: actions };
+  } else if (action) {
+    filter.action = action;
+  }
   if (severity) filter.severity = severity;
+  if (since) {
+    const sinceDate = new Date(since);
+    if (!Number.isNaN(sinceDate.getTime())) {
+      filter.createdAt = { $gte: sinceDate };
+    }
+  }
 
   const [logs, total] = await Promise.all([
     AuditLog.find(filter)
@@ -146,7 +159,13 @@ const queryLogs = async ({
 /**
  * Get aggregated stats for the dashboard.
  */
-const getStats = async ({ partnerId, partnerIds, ownerUserId, userId, since } = {}) => {
+const getStats = async ({
+  partnerId,
+  partnerIds,
+  ownerUserId,
+  userId,
+  since,
+} = {}) => {
   const match = {};
   if (partnerId) match.partnerId = partnerId;
   applyOwnerFilter(match, ownerUserId, userId, partnerIds);
@@ -170,7 +189,13 @@ const getStats = async ({ partnerId, partnerIds, ownerUserId, userId, since } = 
 /**
  * Get recent critical/warning events for live threat feed.
  */
-const getRecentThreats = async ({ limit = 20, since, partnerIds, ownerUserId, userId } = {}) => {
+const getRecentThreats = async ({
+  limit = 20,
+  since,
+  partnerIds,
+  ownerUserId,
+  userId,
+} = {}) => {
   const filter = { severity: { $in: ["WARN", "CRITICAL"] } };
   applyOwnerFilter(filter, ownerUserId, userId, partnerIds);
   if (since) filter.createdAt = { $gte: new Date(since) };
@@ -181,7 +206,13 @@ const getRecentThreats = async ({ limit = 20, since, partnerIds, ownerUserId, us
 /**
  * Get hourly event counts for the last N hours (for dashboard sparklines).
  */
-const getTimeline = async ({ hours = 24, partnerId, partnerIds, ownerUserId, userId } = {}) => {
+const getTimeline = async ({
+  hours = 24,
+  partnerId,
+  partnerIds,
+  ownerUserId,
+  userId,
+} = {}) => {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000);
   const match = { createdAt: { $gte: since } };
   if (partnerId) match.partnerId = partnerId;

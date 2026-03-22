@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -33,11 +33,33 @@ const AUTH_ACTIONS = new Set([
   "USER_LOGIN_FAILURE",
 ]);
 
+const AUTH_ACTION_LIST = [...AUTH_ACTIONS];
+
+const TIME_WINDOWS = [
+  { label: "Last 1h", value: "1" },
+  { label: "Last 24h", value: "24" },
+  { label: "Last 7d", value: "168" },
+  { label: "Last 30d", value: "720" },
+];
+
+const AUTO_REFRESH_OPTIONS = [
+  { label: "Off", value: "0" },
+  { label: "15s", value: "15" },
+  { label: "30s", value: "30" },
+  { label: "60s", value: "60" },
+];
+
 export default function AuthenticationLogsPage() {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [total, setTotal] = useState(0);
+  const [timeWindowHours, setTimeWindowHours] = useState("24");
+  const [autoRefreshSeconds, setAutoRefreshSeconds] = useState("30");
+  const [maxRows, setMaxRows] = useState("150");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string>("");
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("authToken");
@@ -47,28 +69,58 @@ export default function AuthenticationLogsPage() {
     setLoading(false);
   }, []);
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     if (!token) return;
+    if (inFlightRef.current) return;
+
     try {
+      inFlightRef.current = true;
       setLoading(true);
       setError("");
+
+      const params = new URLSearchParams({
+        limit: maxRows,
+        actions: AUTH_ACTION_LIST.join(","),
+      });
+      if (timeWindowHours) {
+        params.set("sinceHours", timeWindowHours);
+      }
+
       const data = await requestJson<LogsResponse>(
-        "/api/dashboard/audit-logs?limit=150",
+        `/api/dashboard/audit-logs?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
       );
       setLogs((data.logs || []).filter((log) => AUTH_ACTIONS.has(log.action)));
+      setTotal(data.total || 0);
+      setLastUpdatedAt(new Date().toISOString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load logs");
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
     }
-  };
+  }, [token, maxRows, timeWindowHours]);
 
   useEffect(() => {
-    loadLogs();
-  }, [token]);
+    void loadLogs();
+  }, [loadLogs]);
+
+  useEffect(() => {
+    const intervalSeconds = Number(autoRefreshSeconds || "0");
+    if (!token || intervalSeconds <= 0) {
+      return;
+    }
+
+    const timerId = window.setInterval(() => {
+      void loadLogs();
+    }, intervalSeconds * 1000);
+
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [token, autoRefreshSeconds, loadLogs]);
 
   const counts = useMemo(() => {
     return logs.reduce(
@@ -100,7 +152,7 @@ export default function AuthenticationLogsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadLogs}
+            onClick={() => void loadLogs()}
             disabled={!token || loading}
           >
             <RefreshCw
@@ -109,6 +161,60 @@ export default function AuthenticationLogsPage() {
             Refresh
           </Button>
         </div>
+
+        {token && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="space-y-1 text-sm">
+                  <span className="text-muted-foreground">Time window</span>
+                  <select
+                    value={timeWindowHours}
+                    onChange={(event) => setTimeWindowHours(event.target.value)}
+                    className="h-9 w-full rounded-md border bg-background px-3"
+                  >
+                    {TIME_WINDOWS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="space-y-1 text-sm">
+                  <span className="text-muted-foreground">Auto refresh</span>
+                  <select
+                    value={autoRefreshSeconds}
+                    onChange={(event) =>
+                      setAutoRefreshSeconds(event.target.value)
+                    }
+                    className="h-9 w-full rounded-md border bg-background px-3"
+                  >
+                    {AUTO_REFRESH_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="space-y-1 text-sm">
+                  <span className="text-muted-foreground">Max events</span>
+                  <select
+                    value={maxRows}
+                    onChange={(event) => setMaxRows(event.target.value)}
+                    className="h-9 w-full rounded-md border bg-background px-3"
+                  >
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="150">150</option>
+                    <option value="200">200</option>
+                  </select>
+                </label>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {!token && (
           <Card>
@@ -169,6 +275,12 @@ export default function AuthenticationLogsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Showing {logs.length} of {total} events
+                  {lastUpdatedAt ?
+                    ` • Updated ${new Date(lastUpdatedAt).toLocaleTimeString()}`
+                  : ""}
+                </p>
                 {logs.length === 0 && (
                   <p className="text-sm text-muted-foreground">
                     No events found.

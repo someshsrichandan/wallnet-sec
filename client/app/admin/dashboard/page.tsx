@@ -101,6 +101,8 @@ type SendVisualResetResponse = {
   expiresAt: string;
 };
 
+type ApiSegment = "stats" | "threats" | "analytics" | "audit" | "users";
+
 const DASHBOARD_TABS = [
   "overview",
   "threats",
@@ -184,6 +186,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [apiErrors, setApiErrors] = useState<
+    Partial<Record<ApiSegment, string>>
+  >({});
+  const [lastSyncAt, setLastSyncAt] = useState<string>("");
 
   // Recovery panel state
   const [recoveryQuery, setRecoveryQuery] = useState("");
@@ -216,7 +222,7 @@ export default function DashboardPage() {
         const headers = { Authorization: `Bearer ${token}` };
 
         const [statsRes, threatsRes, analyticsRes, auditRes] =
-          await Promise.all([
+          await Promise.allSettled([
             requestJson<DashboardStats>("/api/dashboard/stats", { headers }),
             requestJson<{ threats: ThreatEvent[] }>(
               "/api/dashboard/threats?limit=50",
@@ -233,12 +239,60 @@ export default function DashboardPage() {
             ),
           ]);
 
-        setStats(statsRes);
-        setThreats(threatsRes.threats || []);
-        setAnalytics(analyticsRes);
-        setAuditLogs(auditRes.logs || []);
+        const nextErrors: Partial<Record<ApiSegment, string>> = {};
 
-        if (showToast) toast.success("Dashboard refreshed");
+        if (statsRes.status === "fulfilled") {
+          setStats(statsRes.value);
+        } else {
+          nextErrors.stats =
+            statsRes.reason instanceof Error ?
+              statsRes.reason.message
+            : "Stats request failed";
+        }
+
+        if (threatsRes.status === "fulfilled") {
+          setThreats(threatsRes.value.threats || []);
+        } else {
+          nextErrors.threats =
+            threatsRes.reason instanceof Error ?
+              threatsRes.reason.message
+            : "Threat feed request failed";
+        }
+
+        if (analyticsRes.status === "fulfilled") {
+          setAnalytics(analyticsRes.value);
+        } else {
+          nextErrors.analytics =
+            analyticsRes.reason instanceof Error ?
+              analyticsRes.reason.message
+            : "Analytics request failed";
+        }
+
+        if (auditRes.status === "fulfilled") {
+          setAuditLogs(auditRes.value.logs || []);
+        } else {
+          nextErrors.audit =
+            auditRes.reason instanceof Error ?
+              auditRes.reason.message
+            : "Audit logs request failed";
+        }
+
+        setApiErrors((prev) => ({
+          ...prev,
+          stats: nextErrors.stats,
+          threats: nextErrors.threats,
+          analytics: nextErrors.analytics,
+          audit: nextErrors.audit,
+        }));
+        setLastSyncAt(new Date().toISOString());
+
+        if (showToast) {
+          if (Object.keys(nextErrors).length === 0) {
+            toast.success("Dashboard refreshed");
+          } else {
+            toast.error("Some dashboard sections failed to refresh");
+          }
+        }
       } catch (err) {
         const msg =
           err instanceof Error ? err.message : "Failed to load dashboard data";
@@ -263,8 +317,12 @@ export default function DashboardPage() {
         },
       );
       setBankUsers(data.users || []);
+      setApiErrors((prev) => ({ ...prev, users: undefined }));
     } catch {
-      // non-fatal
+      setApiErrors((prev) => ({
+        ...prev,
+        users: "Users request failed",
+      }));
     } finally {
       setUsersLoading(false);
     }
@@ -325,6 +383,16 @@ export default function DashboardPage() {
     const interval = setInterval(() => fetchData(), 30_000);
     return () => clearInterval(interval);
   }, [fetchData, fetchBankUsers]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (activeTab === "users") {
+      fetchBankUsers();
+      return;
+    }
+
+    fetchData();
+  }, [activeTab, token, fetchData, fetchBankUsers]);
 
   useEffect(() => {
     const syncFromHash = () => {
@@ -391,8 +459,21 @@ export default function DashboardPage() {
               Monitor your users' visual authentication sessions and security
               threats.
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {lastSyncAt ?
+                `Live data · last synced ${new Date(lastSyncAt).toLocaleTimeString("en-IN")}`
+              : "Live data · waiting for first sync"}
+            </p>
           </div>
           <div className="flex items-center gap-3">
+            {Object.values(apiErrors).filter(Boolean).length > 0 && (
+              <Badge
+                variant="outline"
+                className="border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300"
+              >
+                Partial API errors
+              </Badge>
+            )}
             {stats && threats.length > 0 && (
               <Badge className="relative flex overflow-hidden border-rose-300 bg-rose-100 text-[10px] uppercase tracking-wide text-rose-800 dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-200">
                 <div className="absolute inset-0 bg-rose-500/10 animate-pulse" />
@@ -576,6 +657,131 @@ export default function DashboardPage() {
                     </Card>
                   </div>
                 )}
+
+                <div className="grid md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <ShieldAlert className="h-4 w-4" />
+                        Threats Snapshot
+                      </CardTitle>
+                      <CardDescription>
+                        Latest security posture from the threat feed.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {threats.length === 0 ?
+                        <div className="rounded-md border border-emerald-200/60 bg-emerald-50/60 px-3 py-4 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300">
+                          No active threats detected.
+                        </div>
+                      : threats.slice(0, 3).map((threat) => (
+                          <div
+                            key={threat._id}
+                            className="rounded-md border border-border/70 px-3 py-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-semibold truncate">
+                                {threat.action}
+                              </p>
+                              <Badge variant="outline" className="text-[10px]">
+                                {threat.severity}
+                              </Badge>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {formatTimeAgo(threat.createdAt)}
+                              {threat.userId ? ` · User ${threat.userId}` : ""}
+                            </p>
+                          </div>
+                        ))
+                      }
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4" />
+                        Analytics Snapshot
+                      </CardTitle>
+                      <CardDescription>
+                        Top preference trends over the selected period.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {(
+                        analytics &&
+                        (analytics.byFormulaMode.length > 0 ||
+                          analytics.byCatalogType.length > 0)
+                      ) ?
+                        <>
+                          <div className="rounded-md bg-muted/40 px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              Formula Mode Leader
+                            </p>
+                            <p className="text-sm font-semibold mt-1">
+                              {analytics.byFormulaMode
+                                .slice()
+                                .sort((a, b) => b.count - a.count)[0]?._id ||
+                                "-"}
+                            </p>
+                          </div>
+                          <div className="rounded-md bg-muted/40 px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              Graphic Theme Leader
+                            </p>
+                            <p className="text-sm font-semibold mt-1">
+                              {analytics.byCatalogType
+                                .slice()
+                                .sort((a, b) => b.count - a.count)[0]?._id ||
+                                "-"}
+                            </p>
+                          </div>
+                        </>
+                      : <div className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
+                          No analytics segments available yet.
+                        </div>
+                      }
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Key className="h-4 w-4" />
+                        Audit Snapshot
+                      </CardTitle>
+                      <CardDescription>
+                        Most recent security events recorded.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {auditLogs.length === 0 ?
+                        <div className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
+                          No audit events recorded yet.
+                        </div>
+                      : auditLogs.slice(0, 4).map((log) => (
+                          <div
+                            key={log._id}
+                            className="rounded-md border border-border/70 px-3 py-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-semibold truncate">
+                                {log.action}
+                              </p>
+                              <Badge variant="outline" className="text-[10px]">
+                                {log.severity}
+                              </Badge>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground truncate">
+                              {formatTimeAgo(log.createdAt)} ·{" "}
+                              {log.partnerId || "-"}
+                            </p>
+                          </div>
+                        ))
+                      }
+                    </CardContent>
+                  </Card>
+                </div>
 
                 {stats?.auditStats && stats.auditStats.length > 0 && (
                   <Card>

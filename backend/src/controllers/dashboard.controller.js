@@ -3,6 +3,7 @@ const VisualCredential = require("../models/visualCredential.model");
 const VisualEnrollSession = require("../models/visualEnrollSession.model");
 const EmailSettings = require("../models/emailSettings.model");
 const PartnerKey = require("../models/partnerKey.model");
+const AuditLog = require("../models/auditLog.model");
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
 const asyncHandler = require("../utils/asyncHandler");
@@ -118,34 +119,38 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     avgVerificationTime,
     auditStats,
   ] = await Promise.all([
-    VisualSession.countDocuments(ownerPartnerScope),
+    // Session docs have short TTL for security, so use audit trails for historical totals.
+    AuditLog.countDocuments({
+      ...ownerPartnerScope,
+      action: "INIT_AUTH",
+    }),
     VisualSession.countDocuments({
       ...ownerPartnerScope,
       status: "PENDING",
       expiresAt: { $gt: now },
     }),
-    VisualSession.countDocuments({
+    AuditLog.countDocuments({
       ...ownerPartnerScope,
-      status: "PASS",
-      verifiedAt: { $gte: last24h },
+      action: "VERIFY_PASS",
+      createdAt: { $gte: last24h },
     }),
-    VisualSession.countDocuments({
+    AuditLog.countDocuments({
       ...ownerPartnerScope,
-      status: "FAIL",
-      lastAttemptAt: { $gte: last24h },
+      action: "VERIFY_FAIL",
+      createdAt: { $gte: last24h },
     }),
-    VisualSession.countDocuments({
+    AuditLog.countDocuments({
       ...ownerPartnerScope,
-      status: "LOCKED",
-      updatedAt: { $gte: last24h },
+      action: "SESSION_LOCKED",
+      createdAt: { $gte: last24h },
     }),
     VisualCredential.countDocuments({
       ...ownerPartnerScope,
       active: true,
     }),
-    VisualSession.countDocuments({
+    AuditLog.countDocuments({
       ...ownerPartnerScope,
-      honeypotDetected: true,
+      action: "HONEYPOT_DETECTED",
     }),
     VisualSession.aggregate([
       { $match: ownerPartnerScope },
@@ -177,6 +182,13 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   for (const item of sessionsByStatus) {
     statusMap[item._id] = item.count;
   }
+
+  // Add historical terminal outcomes from audit logs so the 24h chart is not blank
+  // when TTL cleanup removes old session documents.
+  statusMap.PASS = Math.max(Number(statusMap.PASS || 0), passedSessions24h);
+  statusMap.FAIL = Math.max(Number(statusMap.FAIL || 0), failedSessions24h);
+  statusMap.LOCKED = Math.max(Number(statusMap.LOCKED || 0), lockedSessions24h);
+  statusMap.PENDING = Math.max(Number(statusMap.PENDING || 0), activeSessions);
 
   res.json({
     overview: {
@@ -269,14 +281,29 @@ const getAuditLogs = asyncHandler(async (req, res) => {
   });
   const partnerId = req.query.partnerId || undefined;
   const action = req.query.action || undefined;
+  const actions =
+    typeof req.query.actions === "string" ?
+      req.query.actions
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : undefined;
   const severity = req.query.severity || undefined;
+  const sinceHours =
+    req.query.sinceHours ?
+      assertInteger("sinceHours", req.query.sinceHours, { min: 1, max: 720 })
+    : undefined;
+  const since =
+    sinceHours ? new Date(Date.now() - sinceHours * 60 * 60 * 1000) : undefined;
 
   const result = await queryLogs({
     partnerId,
     ownerUserId,
     partnerIds,
     action,
+    actions,
     severity,
+    since,
     limit,
     offset: skip,
   });
