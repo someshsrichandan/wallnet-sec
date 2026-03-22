@@ -779,7 +779,7 @@ export default function AdminPage() {
                   </p>
                 : keys.slice(0, 4).map((item, index) => (
                     <div
-                      key={item._id?.toString() || item.id || index}
+                      key={item._id?.toString() || index}
                       className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700 md:flex-row md:items-center md:justify-between"
                     >
                       <div>
