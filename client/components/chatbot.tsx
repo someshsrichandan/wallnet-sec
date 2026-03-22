@@ -2,6 +2,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Shield, Lock, Eye, Zap, Headset, Banknote } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -171,7 +173,20 @@ const Chatbot: React.FC = () => {
                         : 'bg-slate-700 text-slate-100 rounded-bl-none border border-slate-600'
                     }`}
                   >
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
+                    <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          a: ({node, ...props}) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline decoration-blue-500/50 underline-offset-2" />,
+                          ul: ({node, ...props}) => <ul {...props} className="list-disc ml-4 mt-2 space-y-1" />,
+                          ol: ({node, ...props}) => <ol {...props} className="list-decimal ml-4 mt-2 space-y-1" />,
+                          li: ({node, ...props}) => <li {...props} className="mb-1" />,
+                          strong: ({node, ...props}) => <strong {...props} className="font-bold text-white" />,
+                        }}
+                      >
+                        {message.text}
+                      </ReactMarkdown>
+                    </div>
                     <p className="text-[10px] opacity-40 mt-2 flex items-center">
                       {message.isUser ? (
                         <Lock className="w-2.5 h-2.5 mr-1" />

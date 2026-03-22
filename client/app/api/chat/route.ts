@@ -31,13 +31,13 @@ You can answer any questions about:
 - Formatting: Always use **bold text** for business critical information like contact emails, "100% customizable", "modified", and "WallNet-Sec".
 - Always use a professional, secure, and helpful tone.
 
-Provide detailed, technical answers. If asked about pricing or custom work, guide them to the contact emails. Keep answers comprehensive but clear. Use markdown formatting for lists or emphasis. Token limit: 250. My live deployments:
-- Platform: https://wallnet-sec.vercel.app/
-- API: https://api-wallnet-sec.vercel.app/
-- Demo Bank: https://demo-bank-wallnet-sec.vercel.app/
-- Demo E-commerce: https://demo-ecommerce-wallnet-sec.vercel.app/
-- Demo Wallet: https://demo-wallet-wallnet-sec.vercel.app/
-- Test Site: https://demo-crypto-wallnet-sec.vercel.app/`;
+Provide detailed, technical answers. If asked about pricing or custom work, guide them to the contact emails. Keep answers comprehensive but clear. **Use markdown formatting for lists, bolding, and clickable links.** My live deployments (Always display these as a clean markdown list with bold titles):
+- **Platform:** [https://wallnet-sec.vercel.app/](https://wallnet-sec.vercel.app/)
+- **API Documentation:** [https://api-wallnet-sec.vercel.app/](https://api-wallnet-sec.vercel.app/)
+- **Demo Bank:** [https://demo-bank-wallnet-sec.vercel.app/](https://demo-bank-wallnet-sec.vercel.app/)
+- **Demo E-commerce:** [https://demo-ecommerce-wallnet-sec.vercel.app/](https://demo-ecommerce-wallnet-sec.vercel.app/)
+- **Demo Wallet:** [https://demo-wallet-wallnet-sec.vercel.app/](https://demo-wallet-wallnet-sec.vercel.app/)
+- **Test Site (Crypto):** [https://demo-crypto-wallnet-sec.vercel.app/](https://demo-crypto-wallnet-sec.vercel.app/)`;
 
 export async function POST(request: NextRequest) {
   try {
