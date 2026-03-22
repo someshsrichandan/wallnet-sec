@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { MessageCircle, X, Send, Shield, Lock, Eye, Zap, Headset, Banknote } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -15,7 +16,23 @@ interface Message {
 }
 
 const Chatbot: React.FC = () => {
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+
+  // Define allowed paths where the chatbot should be visible
+  const allowedPaths = [
+    '/',
+    '/how-it-works',
+    '/developers',
+    '/docs',
+    '/contact'
+  ];
+
+  // Check if current path is allowed or starts with /admin (to include login/signup)
+  const isVisible = allowedPaths.includes(pathname) || pathname.startsWith('/admin/');
+
+  // Don't render if not on an allowed path
+  if (!isVisible) return null;
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
