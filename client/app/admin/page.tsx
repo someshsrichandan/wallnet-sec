@@ -777,9 +777,9 @@ export default function AdminPage() {
                   <p className="text-sm text-slate-500 dark:text-slate-400">
                     No keys yet. Create your first key above.
                   </p>
-                : keys.slice(0, 4).map((item) => (
+                : keys.slice(0, 4).map((item, index) => (
                     <div
-                      key={item._id}
+                      key={item._id?.toString() || item.id || index}
                       className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700 md:flex-row md:items-center md:justify-between"
                     >
                       <div>
