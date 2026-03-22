@@ -70,20 +70,36 @@ type ThreatEvent = {
   metadata: Record<string, unknown>;
 };
 
-type BankUser = {
+type TrackedUser = {
   id: string;
-  partnerUserId: string;
+  partnerId: string;
+  userId: string;
   fullName: string;
-  emailMasked: string;
-  emailFull: string;
+  email: string;
   phone: string;
-  phoneMasked: string;
-  accountNumber: string;
-  visualEnabled: boolean;
-  createdAt: string;
+  sourceHost: string;
+  authMethod: string;
+  totalSessions: number;
+  passCount: number;
+  failCount: number;
+  lockedCount: number;
+  pendingCount: number;
+  passRate: number;
+  lastStatus: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastVerifiedAt?: string;
+  lastConsumedAt?: string;
 };
 
-const DASHBOARD_TABS = ["overview", "threats", "analytics", "audit", "recovery", "users"] as const;
+const DASHBOARD_TABS = [
+  "overview",
+  "threats",
+  "analytics",
+  "audit",
+  "recovery",
+  "users",
+] as const;
 type DashboardTab = (typeof DASHBOARD_TABS)[number];
 
 const resolveTabFromHash = (hash: string): DashboardTab => {
@@ -173,10 +189,9 @@ export default function DashboardPage() {
   const [copied, setCopied] = useState(false);
 
   // Users tab state
-  const [bankUsers, setBankUsers] = useState<BankUser[]>([]);
+  const [bankUsers, setBankUsers] = useState<TrackedUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [userSearch, setUserSearch] = useState("");
-  const [userResetStates, setUserResetStates] = useState<Record<string, { sending: boolean; result: string; enrollUrl?: string; copied?: boolean }>>({});
 
   useEffect(() => {
     const stored = localStorage.getItem("authToken");
@@ -226,16 +241,18 @@ export default function DashboardPage() {
     [token],
   );
 
-  // Fetch bank users from demo-bank
+  // Fetch tracked users by partner/user activity scope.
   const fetchBankUsers = useCallback(async () => {
     if (!token) return;
     setUsersLoading(true);
     try {
-      const res = await fetch("/api/proxy/demo-bank/list-users", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json() as { ok?: boolean; users?: BankUser[] };
-      if (data.ok && data.users) setBankUsers(data.users);
+      const data = await requestJson<{ users?: TrackedUser[] }>(
+        "/api/dashboard/users?days=30",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      setBankUsers(data.users || []);
     } catch {
       // non-fatal
     } finally {
@@ -254,7 +271,9 @@ export default function DashboardPage() {
   useEffect(() => {
     const syncFromHash = () => {
       const tabFromHash = resolveTabFromHash(window.location.hash);
-      setActiveTab((current) => (current === tabFromHash ? current : tabFromHash));
+      setActiveTab((current) =>
+        current === tabFromHash ? current : tabFromHash,
+      );
     };
 
     syncFromHash();
@@ -263,7 +282,10 @@ export default function DashboardPage() {
   }, []);
 
   const handleTabChange = (tab: string) => {
-    const nextTab = (DASHBOARD_TABS.includes(tab as DashboardTab) ? tab : "overview") as DashboardTab;
+    const nextTab = (
+      DASHBOARD_TABS.includes(tab as DashboardTab) ? tab : (
+        "overview"
+      )) as DashboardTab;
     setActiveTab(nextTab);
 
     const path = `${window.location.pathname}${window.location.search}`;
@@ -302,30 +324,35 @@ export default function DashboardPage() {
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[30rem] bg-[radial-gradient(circle_at_50%_0%,rgba(120,119,198,0.1),transparent_50%)] dark:opacity-20" />
 
       <main className="relative mx-auto max-w-7xl px-6 py-8 space-y-6">
-         <div className="flex items-center justify-between pb-4 border-b border-slate-200/60 dark:border-slate-800/60">
-           <div>
-             <h2 className="text-2xl font-bold tracking-tight text-foreground">Platform Analytics</h2>
-             <p className="mt-1 text-sm text-muted-foreground">Monitor your users' visual authentication sessions and security threats.</p>
-           </div>
-           <div className="flex items-center gap-3">
-             {stats && threats.length > 0 && (
-               <Badge className="relative flex overflow-hidden border-rose-300 bg-rose-100 text-[10px] uppercase tracking-wide text-rose-800 dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-200">
-                 <div className="absolute inset-0 bg-rose-500/10 animate-pulse" />
-                 {threats.length} Active Threats
-               </Badge>
-             )}
-             <Button
-               variant="outline"
-               size="sm"
-               disabled={refreshing}
-               onClick={() => fetchData(true)}
-             >
-               <RefreshCw
-                 className={`h-3.5 w-3.5 mr-2 ${refreshing ? "animate-spin" : ""}`}
-               />
-               Refresh Data
-             </Button>
-           </div>
+        <div className="flex items-center justify-between pb-4 border-b border-slate-200/60 dark:border-slate-800/60">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">
+              Platform Analytics
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Monitor your users' visual authentication sessions and security
+              threats.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {stats && threats.length > 0 && (
+              <Badge className="relative flex overflow-hidden border-rose-300 bg-rose-100 text-[10px] uppercase tracking-wide text-rose-800 dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-200">
+                <div className="absolute inset-0 bg-rose-500/10 animate-pulse" />
+                {threats.length} Active Threats
+              </Badge>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={refreshing}
+              onClick={() => fetchData(true)}
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 mr-2 ${refreshing ? "animate-spin" : ""}`}
+              />
+              Refresh Data
+            </Button>
+          </div>
         </div>
         {loading ?
           <div className="flex items-center justify-center min-h-[60vh]">
@@ -375,10 +402,22 @@ export default function DashboardPage() {
             )}
 
             {/* ── Tabs ── */}
-            <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+            <Tabs
+              value={activeTab}
+              onValueChange={handleTabChange}
+              className="space-y-6"
+            >
               <TabsList className="grid w-full grid-cols-6 max-w-3xl rounded-full bg-slate-100 p-1 dark:bg-slate-800">
-                <TabsTrigger value="overview" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">Overview</TabsTrigger>
-                <TabsTrigger value="threats" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">
+                <TabsTrigger
+                  value="overview"
+                  className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950"
+                >
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger
+                  value="threats"
+                  className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950"
+                >
                   Threats
                   {threats.length > 0 && (
                     <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white">
@@ -386,12 +425,28 @@ export default function DashboardPage() {
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="analytics" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">Analytics</TabsTrigger>
-                <TabsTrigger value="audit" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">Audit Log</TabsTrigger>
-                <TabsTrigger value="recovery" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">
+                <TabsTrigger
+                  value="analytics"
+                  className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950"
+                >
+                  Analytics
+                </TabsTrigger>
+                <TabsTrigger
+                  value="audit"
+                  className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950"
+                >
+                  Audit Log
+                </TabsTrigger>
+                <TabsTrigger
+                  value="recovery"
+                  className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950"
+                >
                   <RotateCcw className="h-3 w-3 mr-1" /> Recovery
                 </TabsTrigger>
-                <TabsTrigger value="users" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950">
+                <TabsTrigger
+                  value="users"
+                  className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-950"
+                >
                   <Users className="h-3 w-3 mr-1" /> Users
                   {bankUsers.length > 0 && (
                     <span className="ml-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500 text-[9px] text-white font-bold">
@@ -711,14 +766,24 @@ export default function DashboardPage() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b text-muted-foreground text-left">
-                              <th className="py-2 pr-3 font-medium">Time (Local)</th>
-                              <th className="py-2 pr-3 font-medium">Event Code</th>
+                              <th className="py-2 pr-3 font-medium">
+                                Time (Local)
+                              </th>
+                              <th className="py-2 pr-3 font-medium">
+                                Event Code
+                              </th>
                               <th className="py-2 pr-3 font-medium">
                                 Action Threat Level
                               </th>
-                              <th className="py-2 pr-3 font-medium">App Credential</th>
-                              <th className="py-2 pr-3 font-medium">Customer User ID</th>
-                              <th className="py-2 pr-3 font-medium">Source IP</th>
+                              <th className="py-2 pr-3 font-medium">
+                                App Credential
+                              </th>
+                              <th className="py-2 pr-3 font-medium">
+                                Customer User ID
+                              </th>
+                              <th className="py-2 pr-3 font-medium">
+                                Source IP
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -763,7 +828,6 @@ export default function DashboardPage() {
               </TabsContent>
               {/* ── Recovery Tab ── */}
               <TabsContent value="recovery" className="mt-4 space-y-4">
-
                 {/* Search card */}
                 <Card>
                   <CardHeader>
@@ -772,8 +836,9 @@ export default function DashboardPage() {
                       Visual Password Recovery — Admin Reset
                     </CardTitle>
                     <CardDescription>
-                      Enter bank account number, Customer ID, or email. The system finds the user,
-                      generates a 15-min enroll link, emails it automatically, and shows it here to copy.
+                      Enter bank account number, Customer ID, or email. The
+                      system finds the user, generates a 15-min enroll link,
+                      emails it automatically, and shows it here to copy.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -782,11 +847,19 @@ export default function DashboardPage() {
                         className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:font-sans"
                         placeholder="6-digit account no., customer-bank-xxx, or email"
                         value={recoveryQuery}
-                        onChange={e => { setRecoveryQuery(e.target.value); setRecoveryResult(null); setCopied(false); }}
-                        onKeyDown={e => {
+                        onChange={(e) => {
+                          setRecoveryQuery(e.target.value);
+                          setRecoveryResult(null);
+                          setCopied(false);
+                        }}
+                        onKeyDown={(e) => {
                           if (e.key === "Enter" && recoveryQuery.trim()) {
                             /* trigger via button ref */
-                            (document.getElementById("admin-reset-btn") as HTMLButtonElement)?.click();
+                            (
+                              document.getElementById(
+                                "admin-reset-btn",
+                              ) as HTMLButtonElement
+                            )?.click();
                           }
                         }}
                       />
@@ -798,41 +871,72 @@ export default function DashboardPage() {
                           setRecoveryResult(null);
                           setCopied(false);
                           try {
-                            const res = await fetch("/api/proxy/demo-bank/admin-reset", {
-                              method: "POST",
-                              headers: {
-                                "content-type": "application/json",
-                                Authorization: `Bearer ${token}`,
+                            const res = await fetch(
+                              "/api/proxy/demo-bank/admin-reset",
+                              {
+                                method: "POST",
+                                headers: {
+                                  "content-type": "application/json",
+                                  Authorization: `Bearer ${token}`,
+                                },
+                                body: JSON.stringify({
+                                  query: recoveryQuery.trim(),
+                                  triggeredBy: "Admin Console",
+                                }),
                               },
-                              body: JSON.stringify({ query: recoveryQuery.trim(), triggeredBy: "Admin Console" }),
-                            });
-                            const data = await res.json() as {
+                            );
+                            const data = (await res.json()) as {
                               ok?: boolean;
                               message?: string;
                               enrollUrl?: string;
-                              user?: { fullName: string; emailMasked: string; accountNumber: string };
+                              user?: {
+                                fullName: string;
+                                emailMasked: string;
+                                accountNumber: string;
+                              };
                               emailSent?: boolean;
                             };
-                            if (!res.ok || !data.ok) throw new Error(data.message || "Failed.");
-                            setRecoveryResult({ ok: true, message: data.message || "Done.", enrollUrl: data.enrollUrl, user: data.user, emailSent: data.emailSent });
+                            if (!res.ok || !data.ok)
+                              throw new Error(data.message || "Failed.");
+                            setRecoveryResult({
+                              ok: true,
+                              message: data.message || "Done.",
+                              enrollUrl: data.enrollUrl,
+                              user: data.user,
+                              emailSent: data.emailSent,
+                            });
                           } catch (err) {
-                            setRecoveryResult({ ok: false, message: err instanceof Error ? err.message : "Failed." });
+                            setRecoveryResult({
+                              ok: false,
+                              message:
+                                err instanceof Error ? err.message : "Failed.",
+                            });
                           } finally {
                             setRecoverySending(false);
                           }
                         }}
                       >
-                        {recoverySending ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Finding…</> : <><Search className="h-4 w-4 mr-2" /> Generate & Send</>}
+                        {recoverySending ?
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />{" "}
+                            Finding…
+                          </>
+                        : <>
+                            <Search className="h-4 w-4 mr-2" /> Generate & Send
+                          </>
+                        }
                       </Button>
                     </div>
 
                     {/* Result */}
                     {recoveryResult && (
-                      <div className={`rounded-xl border p-4 space-y-3 ${
-                        recoveryResult.ok
-                          ? "border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10"
+                      <div
+                        className={`rounded-xl border p-4 space-y-3 ${
+                          recoveryResult.ok ?
+                            "border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-900/10"
                           : "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10"
-                      }`}>
+                        }`}
+                      >
                         {recoveryResult.ok && recoveryResult.user && (
                           <div className="flex items-start gap-3">
                             <div className="flex-1">
@@ -840,23 +944,31 @@ export default function DashboardPage() {
                                 ✅ {recoveryResult.user.fullName}
                               </p>
                               <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
-                                Account #{recoveryResult.user.accountNumber} · {recoveryResult.user.emailMasked}
+                                Account #{recoveryResult.user.accountNumber} ·{" "}
+                                {recoveryResult.user.emailMasked}
                               </p>
                               <p className="text-xs mt-1 text-green-600 dark:text-green-500">
-                                {recoveryResult.emailSent ? "📧 Email sent automatically" : "📋 Email skipped (dev mode) — copy link below"}
+                                {recoveryResult.emailSent ?
+                                  "📧 Email sent automatically"
+                                : "📋 Email skipped (dev mode) — copy link below"
+                                }
                               </p>
                             </div>
                           </div>
                         )}
 
                         {!recoveryResult.ok && (
-                          <p className="text-sm text-red-700 dark:text-red-400">⚠ {recoveryResult.message}</p>
+                          <p className="text-sm text-red-700 dark:text-red-400">
+                            ⚠ {recoveryResult.message}
+                          </p>
                         )}
 
                         {/* Copyable link */}
                         {recoveryResult.ok && recoveryResult.enrollUrl && (
                           <div className="space-y-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-green-700 dark:text-green-400">Re-Enrollment Link (expires in 15 min)</p>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-green-700 dark:text-green-400">
+                              Re-Enrollment Link (expires in 15 min)
+                            </p>
                             <div className="flex items-center gap-2">
                               <code className="flex-1 text-xs bg-white dark:bg-slate-900 border border-green-200 dark:border-green-800 rounded-md px-3 py-2 font-mono break-all text-green-900 dark:text-green-200">
                                 {recoveryResult.enrollUrl}
@@ -866,7 +978,9 @@ export default function DashboardPage() {
                                 variant="outline"
                                 className="shrink-0 border-green-300"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(recoveryResult.enrollUrl!);
+                                  navigator.clipboard.writeText(
+                                    recoveryResult.enrollUrl!,
+                                  );
                                   setCopied(true);
                                   setTimeout(() => setCopied(false), 2000);
                                 }}
@@ -875,7 +989,8 @@ export default function DashboardPage() {
                               </Button>
                             </div>
                             <p className="text-xs text-green-600 dark:text-green-500">
-                              Share this link directly, or the user will receive it by email above.
+                              Share this link directly, or the user will receive
+                              it by email above.
                             </p>
                           </div>
                         )}
@@ -893,7 +1008,10 @@ export default function DashboardPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="text-xs text-blue-800 dark:text-blue-200 space-y-2">
-                      <p>For phone-based recovery with DTMF account verification + OTP:</p>
+                      <p>
+                        For phone-based recovery with DTMF account verification
+                        + OTP:
+                      </p>
                       <a
                         href="http://localhost:3002/agent"
                         target="_blank"
@@ -912,13 +1030,50 @@ export default function DashboardPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="text-xs text-amber-800 dark:text-amber-200 space-y-1.5">
-                      <p className="font-semibold">Get free calling for demo:</p>
+                      <p className="font-semibold">
+                        Get free calling for demo:
+                      </p>
                       <ul className="space-y-1 list-none">
-                        <li>🆓 <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer" className="underline font-medium">Twilio Free Trial</a> — $15 credit, no expiry</li>
-                        <li>🆓 <a href="https://www.vonage.com/communications-apis/" target="_blank" rel="noopener noreferrer" className="underline font-medium">Vonage/Nexmo</a> — €2 free credit</li>
-                        <li>🆓 <a href="https://plivo.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">Plivo</a> — $0.80 trial credit</li>
+                        <li>
+                          🆓{" "}
+                          <a
+                            href="https://www.twilio.com/try-twilio"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline font-medium"
+                          >
+                            Twilio Free Trial
+                          </a>{" "}
+                          — $15 credit, no expiry
+                        </li>
+                        <li>
+                          🆓{" "}
+                          <a
+                            href="https://www.vonage.com/communications-apis/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline font-medium"
+                          >
+                            Vonage/Nexmo
+                          </a>{" "}
+                          — €2 free credit
+                        </li>
+                        <li>
+                          🆓{" "}
+                          <a
+                            href="https://plivo.com"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline font-medium"
+                          >
+                            Plivo
+                          </a>{" "}
+                          — $0.80 trial credit
+                        </li>
                       </ul>
-                      <p className="text-amber-600 dark:text-amber-400 pt-1">All work on localhost via ngrok tunnel.</p>
+                      <p className="text-amber-600 dark:text-amber-400 pt-1">
+                        All work on localhost via ngrok tunnel.
+                      </p>
                     </CardContent>
                   </Card>
                 </div>
@@ -932,17 +1087,25 @@ export default function DashboardPage() {
                       <div>
                         <CardTitle className="text-base flex items-center gap-2">
                           <Users className="h-4 w-4 text-indigo-500" />
-                          Bank Users
+                          Tracked End Users
                           <span className="text-xs font-normal text-muted-foreground bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                             {bankUsers.length} total
                           </span>
                         </CardTitle>
                         <CardDescription className="mt-1">
-                          All registered demo-bank users. Send a reset link to any user manually.
+                          Users who authenticated through your platform
+                          integrations, grouped by partner app and user.
                         </CardDescription>
                       </div>
-                      <Button size="sm" variant="outline" onClick={fetchBankUsers} disabled={usersLoading}>
-                        <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${usersLoading ? "animate-spin" : ""}`} />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={fetchBankUsers}
+                        disabled={usersLoading}
+                      >
+                        <RefreshCw
+                          className={`h-3.5 w-3.5 mr-1.5 ${usersLoading ? "animate-spin" : ""}`}
+                        />
                         Refresh
                       </Button>
                     </div>
@@ -952,132 +1115,148 @@ export default function DashboardPage() {
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <input
                         className="w-full rounded-lg border border-input bg-background pl-9 pr-4 py-2 text-sm"
-                        placeholder="Search by name, email, account number, or customer ID…"
+                        placeholder="Search by name, email, phone, user ID, partner app, source host, or auth method..."
                         value={userSearch}
-                        onChange={e => setUserSearch(e.target.value)}
+                        onChange={(e) => setUserSearch(e.target.value)}
                       />
                     </div>
                   </CardHeader>
 
                   <CardContent className="p-0">
-                    {usersLoading && bankUsers.length === 0 ? (
+                    {usersLoading && bankUsers.length === 0 ?
                       <div className="flex items-center justify-center py-16 text-muted-foreground">
-                        <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Loading users…
+                        <RefreshCw className="h-5 w-5 animate-spin mr-2" />{" "}
+                        Loading users…
                       </div>
-                    ) : bankUsers.length === 0 ? (
+                    : bankUsers.length === 0 ?
                       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
                         <Users className="h-8 w-8 opacity-30" />
-                        <p className="text-sm">No users found. Register a user on the demo-bank first.</p>
-                        <a href="http://localhost:3002/register" target="_blank" rel="noopener noreferrer"
-                          className="text-xs underline text-indigo-500">Open Registration Page →</a>
+                        <p className="text-sm">
+                          No tracked users yet in the selected time window.
+                        </p>
                       </div>
-                    ) : (
-                      <div className="overflow-x-auto">
+                    : <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b bg-slate-50 dark:bg-slate-900/50">
-                              <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">User</th>
-                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Account #</th>
-                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Phone</th>
-                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Visual</th>
-                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Joined</th>
-                              <th className="text-right py-2.5 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
+                              <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                User
+                              </th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Name
+                              </th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Email
+                              </th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Phone
+                              </th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Platform
+                              </th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Auth
+                              </th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Sessions
+                              </th>
+                              <th className="text-left py-2.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Pass Rate
+                              </th>
+                              <th className="text-left py-2.5 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Last Seen
+                              </th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border">
                             {bankUsers
-                              .filter(u => {
+                              .filter((u) => {
                                 if (!userSearch.trim()) return true;
                                 const q = userSearch.toLowerCase();
                                 return (
-                                  u.fullName.toLowerCase().includes(q) ||
-                                  u.emailMasked.toLowerCase().includes(q) ||
-                                  u.emailFull.toLowerCase().includes(q) ||
-                                  u.accountNumber.includes(q) ||
-                                  u.partnerUserId.toLowerCase().includes(q)
+                                  (u.fullName || "")
+                                    .toLowerCase()
+                                    .includes(q) ||
+                                  (u.email || "").toLowerCase().includes(q) ||
+                                  (u.phone || "").toLowerCase().includes(q) ||
+                                  u.partnerId.toLowerCase().includes(q) ||
+                                  u.userId.toLowerCase().includes(q) ||
+                                  u.authMethod.toLowerCase().includes(q) ||
+                                  (u.sourceHost || "").toLowerCase().includes(q)
                                 );
                               })
-                              .map(u => {
-                                const rs = userResetStates[u.id];
+                              .map((u) => {
                                 return (
-                                  <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors">
+                                  <tr
+                                    key={u.id}
+                                    className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors"
+                                  >
                                     <td className="py-2.5 px-4">
-                                      <div className="font-semibold text-sm">{u.fullName}</div>
-                                      <div className="text-xs text-muted-foreground font-mono">{u.emailFull || u.emailMasked}</div>
+                                      <div className="font-semibold text-sm font-mono">
+                                        {u.userId}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        first seen{" "}
+                                        {new Date(u.firstSeenAt).toLocaleString(
+                                          "en-IN",
+                                        )}
+                                      </div>
                                     </td>
                                     <td className="py-2.5 px-3">
-                                      <code className="text-sm font-mono font-bold tracking-widest bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-                                        {u.accountNumber || "—"}
-                                      </code>
-                                    </td>
-                                    <td className="py-2.5 px-3 text-xs text-muted-foreground font-mono">
-                                      {u.phoneMasked || "—"}
+                                      <div className="text-sm font-semibold">
+                                        {u.fullName || "Unknown User"}
+                                      </div>
                                     </td>
                                     <td className="py-2.5 px-3">
-                                      <Badge variant={u.visualEnabled ? "default" : "secondary"}
-                                        className={u.visualEnabled ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200" : ""}
+                                      <div className="text-xs font-mono text-muted-foreground">
+                                        {u.email || "-"}
+                                      </div>
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      <div className="text-xs font-mono text-muted-foreground">
+                                        {u.phone || "-"}
+                                      </div>
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      <div className="text-sm font-semibold">
+                                        {u.partnerId}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {u.sourceHost || "unknown-host"}
+                                      </div>
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs"
                                       >
-                                        {u.visualEnabled ? "✓ Active" : "✗ Not Set"}
+                                        {u.authMethod || "unknown"}
                                       </Badge>
                                     </td>
-                                    <td className="py-2.5 px-3 text-xs text-muted-foreground">
-                                      {new Date(u.createdAt).toLocaleDateString("en-IN")}
+                                    <td className="py-2.5 px-3 text-xs text-muted-foreground font-mono">
+                                      total {u.totalSessions} / pass{" "}
+                                      {u.passCount} / fail {u.failCount} / lock{" "}
+                                      {u.lockedCount}
                                     </td>
-                                    <td className="py-2.5 px-4 text-right">
-                                      <div className="flex flex-col items-end gap-1.5">
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="text-xs h-7 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300"
-                                          disabled={rs?.sending}
-                                          onClick={async () => {
-                                            setUserResetStates(prev => ({ ...prev, [u.id]: { sending: true, result: "", copied: false } }));
-                                            try {
-                                              const res = await fetch("/api/proxy/demo-bank/admin-reset", {
-                                                method: "POST",
-                                                headers: {
-                                                  "content-type": "application/json",
-                                                  Authorization: `Bearer ${token}`,
-                                                },
-                                                body: JSON.stringify({ query: u.partnerUserId, triggeredBy: "Admin Console — Users Tab" }),
-                                              });
-                                              const data = await res.json() as { ok?: boolean; message?: string; enrollUrl?: string; emailSent?: boolean };
-                                              if (!res.ok || !data.ok) throw new Error(data.message || "Failed");
-                                              setUserResetStates(prev => ({ ...prev, [u.id]: { sending: false, result: data.emailSent ? "📧 Emailed!" : "📋 Copy link", enrollUrl: data.enrollUrl, copied: false } }));
-                                            } catch (e) {
-                                              setUserResetStates(prev => ({ ...prev, [u.id]: { sending: false, result: `⚠ ${e instanceof Error ? e.message : "Failed"}` } }));
-                                            }
-                                          }}
-                                        >
-                                          {rs?.sending ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Sending…</> : <><Mail className="h-3 w-3 mr-1" />Send Reset Link</>}
-                                        </Button>
-
-                                        {/* Inline result */}
-                                        {rs?.result && !rs.sending && (
-                                          <div className="text-right">
-                                            <span className={`text-xs font-medium ${
-                                              rs.result.startsWith("⚠") ? "text-red-500" :
-                                              rs.result.startsWith("📧") ? "text-emerald-600" : "text-amber-600"
-                                            }`}>{rs.result}</span>
-                                            {rs.enrollUrl && (
-                                              <div className="flex items-center gap-1 mt-1">
-                                                <code className="text-[10px] text-muted-foreground font-mono max-w-[200px] truncate">
-                                                  {rs.enrollUrl.slice(0, 40)}…
-                                                </code>
-                                                <button
-                                                  className="text-[10px] font-bold text-indigo-600 hover:underline whitespace-nowrap"
-                                                  onClick={() => {
-                                                    navigator.clipboard.writeText(rs.enrollUrl!);
-                                                    setUserResetStates(prev => ({ ...prev, [u.id]: { ...rs, copied: true } }));
-                                                    setTimeout(() => setUserResetStates(prev => ({ ...prev, [u.id]: { ...rs, copied: false } })), 2000);
-                                                  }}
-                                                >
-                                                  {rs.copied ? "✓ Copied!" : "Copy"}
-                                                </button>
-                                              </div>
-                                            )}
-                                          </div>
+                                    <td className="py-2.5 px-3">
+                                      <span
+                                        className={`text-xs font-semibold ${
+                                          u.passRate >= 70 ? "text-emerald-600"
+                                          : u.passRate >= 40 ? "text-amber-600"
+                                          : "text-rose-600"
+                                        }`}
+                                      >
+                                        {u.passRate}%
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-4 text-xs">
+                                      <div>
+                                        {new Date(u.lastSeenAt).toLocaleString(
+                                          "en-IN",
                                         )}
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        status {u.lastStatus}
                                       </div>
                                     </td>
                                   </tr>
@@ -1086,22 +1265,26 @@ export default function DashboardPage() {
                           </tbody>
                         </table>
 
-                        {bankUsers.filter(u => {
+                        {bankUsers.filter((u) => {
                           if (!userSearch.trim()) return false;
                           const q = userSearch.toLowerCase();
                           return !(
-                            u.fullName.toLowerCase().includes(q) ||
-                            u.emailFull.toLowerCase().includes(q) ||
-                            u.accountNumber.includes(q) ||
-                            u.partnerUserId.toLowerCase().includes(q)
+                            (u.fullName || "").toLowerCase().includes(q) ||
+                            (u.email || "").toLowerCase().includes(q) ||
+                            (u.phone || "").toLowerCase().includes(q) ||
+                            u.partnerId.toLowerCase().includes(q) ||
+                            u.userId.toLowerCase().includes(q) ||
+                            u.authMethod.toLowerCase().includes(q) ||
+                            (u.sourceHost || "").toLowerCase().includes(q)
                           );
-                        }).length === bankUsers.length && userSearch && (
-                          <div className="py-12 text-center text-sm text-muted-foreground">
-                            No users match &ldquo;{userSearch}&rdquo;
-                          </div>
-                        )}
+                        }).length === bankUsers.length &&
+                          userSearch && (
+                            <div className="py-12 text-center text-sm text-muted-foreground">
+                              No users match &ldquo;{userSearch}&rdquo;
+                            </div>
+                          )}
                       </div>
-                    )}
+                    }
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -1116,62 +1299,109 @@ export default function DashboardPage() {
                         Email SMTP Configuration
                       </CardTitle>
                       <CardDescription>
-                        Configure how OTPs and Re-enrollment links are sent from the bank.
+                        Configure how OTPs and Re-enrollment links are sent from
+                        the bank.
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <form className="space-y-4" onSubmit={async (e) => {
-                        e.preventDefault();
-                        const fd = new FormData(e.currentTarget);
-                        const body = Object.fromEntries(fd);
-                        
-                        toast.promise(
-                          fetch("/api/proxy/demo-bank/email-settings", {
-                            method: "POST",
-                            headers: { "content-type": "application/json" },
-                            body: JSON.stringify(body),
-                          }).then(async r => {
-                            const d = await r.json();
-                            if (!r.ok) throw new Error(d.message || "Failed to save");
-                            return d;
-                          }),
-                          {
-                            loading: "Saving and testing connection...",
-                            success: (d) => d.message,
-                            error: (e) => e.message,
-                          }
-                        );
-                      }}>
+                      <form
+                        className="space-y-4"
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          const fd = new FormData(e.currentTarget);
+                          const body = Object.fromEntries(fd);
+
+                          toast.promise(
+                            fetch("/api/proxy/demo-bank/email-settings", {
+                              method: "POST",
+                              headers: { "content-type": "application/json" },
+                              body: JSON.stringify(body),
+                            }).then(async (r) => {
+                              const d = await r.json();
+                              if (!r.ok)
+                                throw new Error(d.message || "Failed to save");
+                              return d;
+                            }),
+                            {
+                              loading: "Saving and testing connection...",
+                              success: (d) => d.message,
+                              error: (e) => e.message,
+                            },
+                          );
+                        }}
+                      >
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <label className="text-xs font-bold uppercase text-muted-foreground">Bank Name</label>
-                            <input name="bankName" defaultValue="HDFC Demo Bank" className="w-full rounded-md border p-2 text-sm" placeholder="HDFC Demo Bank" />
+                            <label className="text-xs font-bold uppercase text-muted-foreground">
+                              Bank Name
+                            </label>
+                            <input
+                              name="bankName"
+                              defaultValue="HDFC Demo Bank"
+                              className="w-full rounded-md border p-2 text-sm"
+                              placeholder="HDFC Demo Bank"
+                            />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-xs font-bold uppercase text-muted-foreground">SMTP Host</label>
-                            <input name="host" defaultValue="smtp.gmail.com" className="w-full rounded-md border p-2 text-sm" placeholder="smtp.gmail.com" />
+                            <label className="text-xs font-bold uppercase text-muted-foreground">
+                              SMTP Host
+                            </label>
+                            <input
+                              name="host"
+                              defaultValue="smtp.gmail.com"
+                              className="w-full rounded-md border p-2 text-sm"
+                              placeholder="smtp.gmail.com"
+                            />
                           </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <label className="text-xs font-bold uppercase text-muted-foreground">SMTP Port</label>
-                            <input name="port" defaultValue="587" className="w-full rounded-md border p-2 text-sm" placeholder="587" />
+                            <label className="text-xs font-bold uppercase text-muted-foreground">
+                              SMTP Port
+                            </label>
+                            <input
+                              name="port"
+                              defaultValue="587"
+                              className="w-full rounded-md border p-2 text-sm"
+                              placeholder="587"
+                            />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-xs font-bold uppercase text-muted-foreground">Sender Email</label>
-                            <input name="user" defaultValue="someshsrichandan@gmail.com" className="w-full rounded-md border p-2 text-sm" placeholder="user@gmail.com" />
+                            <label className="text-xs font-bold uppercase text-muted-foreground">
+                              Sender Email
+                            </label>
+                            <input
+                              name="user"
+                              defaultValue="someshsrichandan@gmail.com"
+                              className="w-full rounded-md border p-2 text-sm"
+                              placeholder="user@gmail.com"
+                            />
                           </div>
                         </div>
 
                         <div className="space-y-2">
-                          <label className="text-xs font-bold uppercase text-muted-foreground">App Password / Pass</label>
-                          <input name="pass" type="password" defaultValue="hafhlmzahkatvpsw" className="w-full rounded-md border p-2 text-sm font-mono" placeholder="••••••••••••••••" />
-                          <p className="text-[10px] text-muted-foreground italic mt-1">For Gmail: Use an "App Password" from your Google Security settings.</p>
+                          <label className="text-xs font-bold uppercase text-muted-foreground">
+                            App Password / Pass
+                          </label>
+                          <input
+                            name="pass"
+                            type="password"
+                            defaultValue="hafhlmzahkatvpsw"
+                            className="w-full rounded-md border p-2 text-sm font-mono"
+                            placeholder="••••••••••••••••"
+                          />
+                          <p className="text-[10px] text-muted-foreground italic mt-1">
+                            For Gmail: Use an "App Password" from your Google
+                            Security settings.
+                          </p>
                         </div>
 
                         <div className="pt-4 flex gap-3">
-                          <Button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+                          <Button
+                            type="submit"
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                          >
                             Save & Test Connection
                           </Button>
                         </div>
@@ -1188,23 +1418,39 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent className="text-sm space-y-4">
                       <div className="space-y-2">
-                        <h4 className="font-bold text-indigo-900 border-b border-indigo-100 pb-1">1. Generating App Passwords</h4>
+                        <h4 className="font-bold text-indigo-900 border-b border-indigo-100 pb-1">
+                          1. Generating App Passwords
+                        </h4>
                         <p className="text-indigo-800 text-xs leading-relaxed">
-                          To send email via Gmail, you <strong>cannot</strong> use your normal password. 
-                          Enable 2-Step Verification, then go to "App Passwords" to generate a unique 16-character code.
+                          To send email via Gmail, you <strong>cannot</strong>{" "}
+                          use your normal password. Enable 2-Step Verification,
+                          then go to "App Passwords" to generate a unique
+                          16-character code.
                         </p>
                       </div>
 
                       <div className="space-y-2">
-                        <h4 className="font-bold text-indigo-900 border-b border-indigo-100 pb-1">2. Runtime Proxy Implementation</h4>
+                        <h4 className="font-bold text-indigo-900 border-b border-indigo-100 pb-1">
+                          2. Runtime Proxy Implementation
+                        </h4>
                         <p className="text-indigo-800 text-xs leading-relaxed">
-                          This dashboard uses a <strong>Secure Proxy</strong>. When you hit "Save", your credentials are sent 
-                          to the Demo-Bank server and stored in its runtime process environment. 
+                          This dashboard uses a <strong>Secure Proxy</strong>.
+                          When you hit "Save", your credentials are sent to the
+                          Demo-Bank server and stored in its runtime process
+                          environment.
                         </p>
                       </div>
 
                       <div className="space-y-2 text-indigo-700 italic text-[11px] border-l-2 border-indigo-300 pl-3">
-                        <p>Note: Settings saved via this UI are <strong>runtime only</strong>. To persist across server restarts, add them to your <code className="bg-white/50 px-1 rounded">.env.local</code> file.</p>
+                        <p>
+                          Note: Settings saved via this UI are{" "}
+                          <strong>runtime only</strong>. To persist across
+                          server restarts, add them to your{" "}
+                          <code className="bg-white/50 px-1 rounded">
+                            .env.local
+                          </code>{" "}
+                          file.
+                        </p>
                       </div>
                     </CardContent>
                   </Card>
@@ -1236,18 +1482,33 @@ function StatCard({
   return (
     <div
       className={`relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm transition-all hover:shadow-md dark:bg-slate-900 ${
-        danger ? "border-rose-100 bg-rose-50/30 dark:border-rose-900/20 dark:bg-rose-900/10" : 
-        highlight ? "border-indigo-100 bg-indigo-50/30 dark:border-indigo-900/20 dark:bg-indigo-900/10" : "border-slate-200 dark:border-slate-800"
+        danger ?
+          "border-rose-100 bg-rose-50/30 dark:border-rose-900/20 dark:bg-rose-900/10"
+        : highlight ?
+          "border-indigo-100 bg-indigo-50/30 dark:border-indigo-900/20 dark:bg-indigo-900/10"
+        : "border-slate-200 dark:border-slate-800"
       }`}
     >
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p>
-        <div className={`rounded-full p-1.5 ${danger ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400" : highlight ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"}`}>
-           <Icon className="h-4 w-4" />
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          {label}
+        </p>
+        <div
+          className={`rounded-full p-1.5 ${
+            danger ?
+              "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400"
+            : highlight ?
+              "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400"
+            : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+          }`}
+        >
+          <Icon className="h-4 w-4" />
         </div>
       </div>
       <div className="flex items-baseline gap-2">
-        <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{value}</h3>
+        <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+          {value}
+        </h3>
       </div>
     </div>
   );

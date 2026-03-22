@@ -62,7 +62,9 @@ const resolveCredentialSecrets = (credential) => {
   // Decrypt both fields. If decryptJson fails (wrong key, corrupt ciphertext),
   // it returns the fallback value (empty array).
   const secretVegetables = ensureArray(
-    typeof rawVegetables === "string" ? decryptJson(rawVegetables, []) : rawVegetables,
+    typeof rawVegetables === "string" ?
+      decryptJson(rawVegetables, [])
+    : rawVegetables,
   );
   const secretLetters = ensureArray(
     typeof rawLetters === "string" ? decryptJson(rawLetters, []) : rawLetters,
@@ -76,10 +78,10 @@ const resolveCredentialSecrets = (credential) => {
     // eslint-disable-next-line no-console
     console.warn(
       `[visual-password] resolveCredentialSecrets: decryption failed for credential ` +
-      `partnerId="${credential?.partnerId}" userId="${credential?.userId}". ` +
-      `vegetables=${secretVegetables.length}/4, letters=${secretLetters.length}/2. ` +
-      `This usually indicates a VISUAL_DATA_ENCRYPTION_KEY rotation. ` +
-      `The partner login/start route will trigger re-enrollment automatically.`,
+        `partnerId="${credential?.partnerId}" userId="${credential?.userId}". ` +
+        `vegetables=${secretVegetables.length}/4, letters=${secretLetters.length}/2. ` +
+        `This usually indicates a VISUAL_DATA_ENCRYPTION_KEY rotation. ` +
+        `The partner login/start route will trigger re-enrollment automatically.`,
     );
 
     throw new HttpError(
@@ -108,6 +110,23 @@ const isAllowedCallbackUrl = (callbackUrl) => {
 
   const callbackOrigin = new URL(callbackUrl).origin.toLowerCase();
   return env.partnerCallbackAllowlist.includes(callbackOrigin);
+};
+
+const resolveSourceHost = (callbackUrl, originHeader) => {
+  const candidate = String(callbackUrl || originHeader || "").trim();
+  if (!candidate) {
+    return "";
+  }
+
+  try {
+    const normalized =
+      candidate.startsWith("http://") || candidate.startsWith("https://") ?
+        candidate
+      : `https://${candidate}`;
+    return new URL(normalized).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
 };
 
 const getSessionByToken = async (sessionToken) => {
@@ -421,9 +440,8 @@ const initAuth = asyncHandler(async (req, res) => {
 
   const resolvedCatalogType = credential.catalogType || CATALOG_TYPE.VEGETABLE;
   const challengeConfig = resolveCredentialChallengeConfig(credential);
-  const { secretVegetables, secretLetters } = resolveCredentialSecrets(
-    credential,
-  );
+  const { secretVegetables, secretLetters } =
+    resolveCredentialSecrets(credential);
 
   const challenge = createChallengePayload({
     secretVegetables,
@@ -447,6 +465,10 @@ const initAuth = asyncHandler(async (req, res) => {
   const expiresAt = new Date(
     Date.now() + (env.visualSessionTtlMs || SESSION_TTL_MS),
   );
+  const sourceHost = resolveSourceHost(callbackUrl, req.get("origin"));
+  const authKeyId = String(req.partner?.keyId || "").trim();
+  const authKeyDocId = String(req.partner?.keyDocId || "").trim();
+  const authMethod = String(req.partner?.authMethod || "").trim();
 
   await VisualSession.create({
     sessionId: sessionToken,
@@ -455,6 +477,10 @@ const initAuth = asyncHandler(async (req, res) => {
     userId,
     catalogType: resolvedCatalogType,
     ownerUserId: credential.ownerUserId,
+    authKeyDocId,
+    authKeyId,
+    authMethod,
+    sourceHost,
     callbackUrl,
     partnerState: state,
     vegetables: challenge.vegetables,
@@ -569,9 +595,8 @@ const getChallenge = asyncHandler(async (req, res) => {
 
   const resolvedCatalogType = credential.catalogType || CATALOG_TYPE.VEGETABLE;
   const challengeConfig = resolveCredentialChallengeConfig(credential);
-  const { secretVegetables, secretLetters } = resolveCredentialSecrets(
-    credential,
-  );
+  const { secretVegetables, secretLetters } =
+    resolveCredentialSecrets(credential);
 
   const freshChallenge = createChallengePayload({
     secretVegetables,

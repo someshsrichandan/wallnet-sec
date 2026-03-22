@@ -9,5 +9,6 @@ router.get("/threats", dashboardController.getThreatFeed);
 router.get("/timeline", dashboardController.getTimelineData);
 router.get("/audit-logs", dashboardController.getAuditLogs);
 router.get("/analytics", dashboardController.getSessionAnalytics);
+router.get("/users", dashboardController.getTrackedUsers);
 
 module.exports = router;

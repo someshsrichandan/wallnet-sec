@@ -21,6 +21,10 @@ const visualSessionSchema = new Schema(
       index: true,
     },
     ownerUserId: { type: String, required: true, trim: true, index: true },
+    authKeyDocId: { type: String, default: "", trim: true, index: true },
+    authKeyId: { type: String, default: "", trim: true, index: true },
+    authMethod: { type: String, default: "", trim: true, index: true },
+    sourceHost: { type: String, default: "", trim: true, index: true },
     callbackUrl: {
       type: Schema.Types.Mixed,
       default: "",
