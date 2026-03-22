@@ -72,7 +72,7 @@ export default function PartnerManagementPage() {
   const [newKeyPartnerId, setNewKeyPartnerId] = useState("");
   const [newKeyMode, setNewKeyMode] = useState<"test" | "live">("test");
   const [newKeyWebhook, setNewKeyWebhook] = useState("");
-  const [revealedCredentials, setRevealedCredentials] = useState<{ keyId: string; keySecret: string; webhookSecret: string } | null>(null);
+  const [revealedCredentials, setRevealedCredentials] = useState<{ keyId: string; keySecret: string; webhookSecret: string; partnerId: string } | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editWebhook, setEditWebhook] = useState("");
   const [editLabel, setEditLabel] = useState("");
@@ -139,6 +139,7 @@ export default function PartnerManagementPage() {
         keyId: data.key_id,
         keySecret: data.key_secret,
         webhookSecret: data.webhook_secret,
+        partnerId: newKeyPartnerId.trim(),
       });
       setNewKeyLabel("");
       setNewKeyPartnerId("");
@@ -170,10 +171,13 @@ export default function PartnerManagementPage() {
           headers,
         },
       );
+      const key = keys.find(k => k._id === keyDocId);
+      if (!key) return;
       setRevealedCredentials({
         keyId: data.key_id,
         keySecret: data.key_secret,
         webhookSecret: "",
+        partnerId: key.partnerId,
       });
       fetchKeys();
       toast.success("Secret rotated. Copy the new key_secret now.");
@@ -302,7 +306,7 @@ export default function PartnerManagementPage() {
                 {/* Usage example */}
                 <div className="space-y-1">
                   <label className="text-xs font-semibold uppercase text-amber-600 dark:text-amber-400">Usage (add to your .env)</label>
-                  <code className="block overflow-x-auto rounded-lg border border-amber-200 bg-white/50 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-900/30 dark:bg-black/20 dark:text-amber-200 whitespace-pre">{`VISUAL_KEY_ID=${revealedCredentials.keyId}\nVISUAL_KEY_SECRET=${revealedCredentials.keySecret}`}</code>
+                  <code className="block overflow-x-auto rounded-lg border border-amber-200 bg-white/50 px-3 py-2 font-mono text-xs text-amber-800 dark:border-amber-900/30 dark:bg-black/20 dark:text-amber-200 whitespace-pre">{`VISUAL_PARTNER_ID=${revealedCredentials.partnerId}\nVISUAL_KEY_ID=${revealedCredentials.keyId}\nVISUAL_KEY_SECRET=${revealedCredentials.keySecret}`}</code>
                 </div>
 
                 <Button
