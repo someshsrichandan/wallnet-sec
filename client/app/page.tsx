@@ -19,6 +19,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LinkPreview } from "@/components/ui/link-preview";
 
 // ─── Theme-aware Particle Shield ──────────────────────────────────────────────
 const ParticleShield = () => {
@@ -314,6 +315,50 @@ export default function Home() {
               </div>
             </div>
           </div>
+        </section>
+
+        {/* ════════════════════════════════════════════
+            DEMO APPLICATIONS - Live Experience
+        ════════════════════════════════════════════ */}
+        <section className="py-12 bg-white dark:bg-[#06060a] border-b border-slate-100 dark:border-white/5">
+           <div className="container mx-auto px-10 lg:px-20 text-center">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6 max-w-7xl mx-auto">
+                 <div className="flex items-center gap-3">
+                    <div className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
+                    <h2 className="text-[14px] font-[900] tracking-widest text-slate-900 dark:text-white uppercase">
+                       Live Experience <span className="serif text-indigo-500 lowercase font-normal italic">Suite</span>
+                    </h2>
+                 </div>
+                 
+                 <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
+                    <LinkPreview url="https://demo-bank-wallnet-sec.vercel.app/" className="group flex flex-col items-center gap-1">
+                       <span className="font-bold text-[12px] text-slate-600 dark:text-zinc-400 group-hover:text-indigo-500 transition-colors uppercase tracking-tight">Demo Bank</span>
+                       <div className="h-0.5 w-0 group-hover:w-full bg-indigo-500 transition-all duration-300" />
+                    </LinkPreview>
+                    
+                    <div className="hidden sm:block h-4 w-[1px] bg-slate-200 dark:bg-white/10" />
+                    
+                    <LinkPreview url="https://demo-ecommerce-wallnet-sec.vercel.app/" className="group flex flex-col items-center gap-1">
+                       <span className="font-bold text-[12px] text-slate-600 dark:text-zinc-400 group-hover:text-indigo-500 transition-colors uppercase tracking-tight">Demo E-commerce</span>
+                       <div className="h-0.5 w-0 group-hover:w-full bg-indigo-500 transition-all duration-300" />
+                    </LinkPreview>
+                    
+                    <div className="hidden sm:block h-4 w-[1px] bg-slate-200 dark:bg-white/10" />
+                    
+                    <LinkPreview url="https://demo-wallet-wallnet-sec.vercel.app/" className="group flex flex-col items-center gap-1">
+                       <span className="font-bold text-[12px] text-slate-600 dark:text-zinc-400 group-hover:text-indigo-500 transition-colors uppercase tracking-tight">Demo Wallet</span>
+                       <div className="h-0.5 w-0 group-hover:w-full bg-indigo-500 transition-all duration-300" />
+                    </LinkPreview>
+                    
+                    <div className="hidden lg:block h-4 w-[1px] bg-slate-200 dark:bg-white/10" />
+                    
+                    <LinkPreview url="https://demo-crypto-wallnet-sec.vercel.app/" className="group flex flex-col items-center gap-1">
+                       <span className="font-bold text-[12px] text-slate-600 dark:text-zinc-400 group-hover:text-indigo-500 transition-colors uppercase tracking-tight">Test Site (Crypto)</span>
+                       <div className="h-0.5 w-0 group-hover:w-full bg-indigo-500 transition-all duration-300" />
+                    </LinkPreview>
+                 </div>
+              </div>
+           </div>
         </section>
 
         {/* ════════════════════════════════════════════
