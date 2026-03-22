@@ -4,6 +4,8 @@ const auth = require("../middlewares/auth");
 
 router.use(auth);
 
+router.get("/ai-runtime", dashboardController.getAiRuntimeStatus);
+router.get("/ai-shadow", dashboardController.getAiShadowAnalytics);
 router.get("/stats", dashboardController.getDashboardStats);
 router.get("/threats", dashboardController.getThreatFeed);
 router.get("/timeline", dashboardController.getTimelineData);

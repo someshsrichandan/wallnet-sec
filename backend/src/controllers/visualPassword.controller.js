@@ -528,6 +528,8 @@ const initAuth = asyncHandler(async (req, res) => {
     req,
     geo,
     metadata: {
+      catalogType: resolvedCatalogType,
+      formulaMode: challenge.formulaMode,
       deviceTrustScore: deviceTrustResult.score,
       geoVelocityFlagged: geoVelocityResult.flagged,
       riskFlags,
@@ -761,9 +763,7 @@ const verify = asyncHandler(async (req, res) => {
     }).catch(() => ({ score: 50, factors: {} })),
   ]);
 
-  const aiShadowEnabled = Boolean(
-    req.ai?.enabled && req.ai?.features?.fraudShadowMode,
-  );
+  const aiShadowEnabled = Boolean(req.ai?.features?.fraudShadowMode);
   let aiRiskResult = null;
 
   if (aiShadowEnabled) {
@@ -839,6 +839,9 @@ const verify = asyncHandler(async (req, res) => {
         behaviorScore: behaviorResult.score,
         attemptCount: session.attemptCount,
         aiShadowMode: aiShadowEnabled,
+        aiProvider: aiRiskResult?.provider,
+        aiModel: aiRiskResult?.model,
+        aiAttempts: aiRiskResult?.attempts,
         aiDecision:
           aiRiskResult ?
             aiRiskResult.ok ?
@@ -869,6 +872,9 @@ const verify = asyncHandler(async (req, res) => {
         metadata: {
           attemptCount: session.attemptCount,
           aiShadowMode: aiShadowEnabled,
+          aiProvider: aiRiskResult?.provider,
+          aiModel: aiRiskResult?.model,
+          aiAttempts: aiRiskResult?.attempts,
           aiDecision:
             aiRiskResult ?
               aiRiskResult.ok ?
@@ -889,6 +895,9 @@ const verify = asyncHandler(async (req, res) => {
           attemptCount: session.attemptCount,
           behaviorScore: behaviorResult.score,
           aiShadowMode: aiShadowEnabled,
+          aiProvider: aiRiskResult?.provider,
+          aiModel: aiRiskResult?.model,
+          aiAttempts: aiRiskResult?.attempts,
           aiDecision:
             aiRiskResult ?
               aiRiskResult.ok ?
@@ -911,6 +920,24 @@ const verify = asyncHandler(async (req, res) => {
       aiRiskResult.ok ? aiRiskResult.decision : aiRiskResult.fallback;
     const aiAction = String(aiDecision?.action || "REVIEW").toUpperCase();
 
+    session.aiShadowSnapshot = {
+      at: new Date(),
+      mode: "SHADOW",
+      promptVersion: aiRiskResult.promptVersion,
+      latencyMs: aiRiskResult.latencyMs,
+      provider: aiRiskResult.provider,
+      model: aiRiskResult.model,
+      attempts: aiRiskResult.attempts,
+      skipped: aiRiskResult.skipped,
+      ok: aiRiskResult.ok,
+      error: aiRiskResult.ok ? undefined : aiRiskResult.error,
+      deterministicAction,
+      aiAction,
+      disagreedWithDeterministic: aiAction !== deterministicAction,
+      decision: aiDecision,
+      fallbackUsed: !aiRiskResult.ok,
+    };
+
     logEvent({
       action: "AI_FRAUD_ASSESSMENT",
       partnerId: session.partnerId,
@@ -922,6 +949,10 @@ const verify = asyncHandler(async (req, res) => {
         mode: "SHADOW",
         promptVersion: aiRiskResult.promptVersion,
         latencyMs: aiRiskResult.latencyMs,
+        provider: aiRiskResult.provider,
+        model: aiRiskResult.model,
+        attempts: aiRiskResult.attempts,
+        skipped: aiRiskResult.skipped,
         ok: aiRiskResult.ok,
         error: aiRiskResult.ok ? undefined : aiRiskResult.error,
         deterministicAction,
@@ -1005,6 +1036,10 @@ const verify = asyncHandler(async (req, res) => {
           mode: "SHADOW",
           promptVersion: aiRiskResult.promptVersion,
           latencyMs: aiRiskResult.latencyMs,
+          provider: aiRiskResult.provider,
+          model: aiRiskResult.model,
+          attempts: aiRiskResult.attempts,
+          skipped: aiRiskResult.skipped,
           fallbackUsed: !aiRiskResult.ok,
           decision:
             aiRiskResult.ok ? aiRiskResult.decision : aiRiskResult.fallback,

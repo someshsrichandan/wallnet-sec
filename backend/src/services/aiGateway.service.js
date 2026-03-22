@@ -3,6 +3,8 @@ const { redactSensitiveObject } = require("../utils/redact");
 
 let geminiClient = null;
 
+const DEFAULT_GEMINI_FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
+
 const extractJsonObject = (text) => {
   const trimmed = String(text || "").trim();
   if (!trimmed) {
@@ -58,6 +60,7 @@ const validateRiskResponse = (value) => {
 const requestOpenAiJson = async ({
   systemPrompt,
   userPrompt,
+  model,
   timeoutMs = env.aiTimeoutMs,
 }) => {
   const controller = new AbortController();
@@ -73,7 +76,7 @@ const requestOpenAiJson = async ({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: env.aiModel,
+          model,
           temperature: 0.1,
           response_format: { type: "json_object" },
           messages: [
@@ -140,6 +143,7 @@ const extractGeminiText = (response) => {
 const requestGeminiJson = async ({
   systemPrompt,
   userPrompt,
+  model,
   timeoutMs = env.aiTimeoutMs,
 }) => {
   const client = getGeminiClient();
@@ -153,7 +157,7 @@ const requestGeminiJson = async ({
   });
 
   const requestPromise = client.models.generateContent({
-    model: env.aiModel,
+    model,
     contents: userPrompt,
     config: {
       systemInstruction: systemPrompt,
@@ -177,34 +181,76 @@ const callJsonModel = async ({ systemPrompt, userPrompt }) => {
     return {
       ok: false,
       skipped: true,
+      attempts: 0,
       error: "AI is disabled",
     };
   }
 
   let attempt = 0;
   let lastError = null;
+  let lastModel = env.aiModel;
   const maxAttempts = Math.max(1, env.aiMaxRetries + 1);
+
+  const fallbackModels = Array.from(
+    new Set(
+      (env.aiModelFallbacks || [])
+        .map((item) => String(item || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  const modelCandidates = Array.from(
+    new Set([
+      String(env.aiModel || "").trim(),
+      ...fallbackModels,
+      ...(env.aiProvider === "gemini" ? DEFAULT_GEMINI_FALLBACK_MODELS : []),
+    ].filter(Boolean)),
+  );
+
+  const normalizeProviderError = (error) => {
+    const rawMessage = String(error?.message || error || "Unknown LLM error");
+    const compact = rawMessage.replace(/\s+/g, " ").trim();
+
+    if (
+      /resource_exhausted|quota exceeded|rate[- ]?limit|too many requests|\b429\b/i.test(
+        compact,
+      )
+    ) {
+      return "AI provider quota/rate limit reached for configured model";
+    }
+
+    if (/timed out|abort/i.test(compact)) {
+      return "AI provider request timed out";
+    }
+
+    return compact.slice(0, 220);
+  };
 
   while (attempt < maxAttempts) {
     attempt += 1;
 
-    try {
-      const content =
-        env.aiProvider === "openai" ?
-          await requestOpenAiJson({ systemPrompt, userPrompt })
-        : env.aiProvider === "gemini" ?
-          await requestGeminiJson({ systemPrompt, userPrompt })
-        : (() => {
-            throw new Error(`Unsupported AI provider: ${env.aiProvider}`);
-          })();
+    for (const model of modelCandidates) {
+      lastModel = model;
 
-      return {
-        ok: true,
-        raw: extractJsonObject(content),
-        attempts: attempt,
-      };
-    } catch (error) {
-      lastError = error;
+      try {
+        const content =
+          env.aiProvider === "openai" ?
+            await requestOpenAiJson({ systemPrompt, userPrompt, model })
+          : env.aiProvider === "gemini" ?
+            await requestGeminiJson({ systemPrompt, userPrompt, model })
+          : (() => {
+              throw new Error(`Unsupported AI provider: ${env.aiProvider}`);
+            })();
+
+        return {
+          ok: true,
+          raw: extractJsonObject(content),
+          attempts: attempt,
+          model,
+        };
+      } catch (error) {
+        lastError = error;
+      }
     }
   }
 
@@ -212,7 +258,8 @@ const callJsonModel = async ({ systemPrompt, userPrompt }) => {
     ok: false,
     skipped: false,
     attempts: maxAttempts,
-    error: lastError ? lastError.message : "Unknown LLM error",
+    model: lastModel,
+    error: normalizeProviderError(lastError),
   };
 };
 
@@ -242,6 +289,10 @@ const evaluateFraudRisk = async ({ signals, context }) => {
     return {
       ok: false,
       latencyMs,
+      provider: env.aiProvider,
+      model: result.model || env.aiModel,
+      attempts: result.attempts || 0,
+      skipped: Boolean(result.skipped),
       fallback: {
         riskScore: 50,
         action: "REVIEW",
@@ -258,6 +309,10 @@ const evaluateFraudRisk = async ({ signals, context }) => {
   return {
     ok: true,
     latencyMs,
+    provider: env.aiProvider,
+    model: result.model || env.aiModel,
+    attempts: result.attempts || 1,
+    skipped: false,
     promptVersion: "fraud-risk-v1",
     decision: validated,
   };
