@@ -83,11 +83,11 @@ export default function AdminLogin() {
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center mb-4">
             <div className="h-14 w-14 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground text-2xl font-black shadow-2xl shadow-primary/20 transition-transform hover:scale-105">
-              FS
+              WN
             </div>
           </div>
           <h2 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            Partner Console
+            WallNet-Sec Console
           </h2>
           <p className="text-muted-foreground text-sm font-medium">
             Login to your visual security command center
