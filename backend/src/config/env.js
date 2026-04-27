@@ -192,6 +192,17 @@ const env = {
     process.env.AI_PARTNER_ASSISTANT_ENABLED,
     false,
   ),
+
+  // Super Admin credentials
+  superAdminEmail: toTrimmedString(process.env.SUPER_ADMIN_EMAIL, ""),
+  superAdminPassword: toTrimmedString(process.env.SUPER_ADMIN_PASSWORD, ""),
+
+  // Email (SMTP)
+  smtpHost: toTrimmedString(process.env.SMTP_HOST, ""),
+  smtpPort: toPositiveInteger(process.env.SMTP_PORT, 587),
+  smtpUser: toTrimmedString(process.env.SMTP_USER, ""),
+  smtpPass: toTrimmedString(process.env.SMTP_PASS, ""),
+  smtpFrom: toTrimmedString(process.env.SMTP_FROM, "WallNet-Sec <no-reply@wallnet-sec.com>"),
 };
 
 const validateEnv = () => {

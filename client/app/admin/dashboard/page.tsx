@@ -179,6 +179,14 @@ const formatTimeAgo = (dateStr: string) => {
 
 export default function DashboardPage() {
   const [token, setToken] = useState("");
+  const [partnerProfile, setPartnerProfile] = useState<{
+    status: string;
+    isTrialExpired: boolean;
+    trialStartDate: string;
+    trialExpiresAt: string;
+    apiLimit: number;
+    apiUsage: number;
+  } | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [threats, setThreats] = useState<ThreatEvent[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -237,6 +245,7 @@ export default function DashboardPage() {
                 headers,
               },
             ),
+            requestJson<any>("/api/users/me", { headers }),
           ]);
 
         const nextErrors: Partial<Record<ApiSegment, string>> = {};
@@ -275,6 +284,11 @@ export default function DashboardPage() {
             auditRes.reason instanceof Error ?
               auditRes.reason.message
             : "Audit logs request failed";
+        }
+
+        const profileRes = await Promise.allSettled([requestJson<any>("/api/users/me", { headers })]).then(r => r[0]);
+        if (profileRes.status === "fulfilled") {
+          setPartnerProfile(profileRes.value);
         }
 
         setApiErrors((prev) => ({
@@ -501,6 +515,56 @@ export default function DashboardPage() {
             </div>
           </div>
         : <>
+            {/* ── Partner Quota Card ── */}
+            {partnerProfile && (
+              <Card className="mb-6 border-slate-200/60 shadow-sm dark:border-slate-800/60 bg-white dark:bg-slate-900 overflow-hidden relative">
+                <div className={`absolute left-0 top-0 bottom-0 w-1 ${partnerProfile.status === 'suspended' ? 'bg-red-500' : partnerProfile.status === 'trial' ? 'bg-blue-500' : partnerProfile.status === 'inactive' ? 'bg-slate-400' : 'bg-emerald-500'}`} />
+                <CardContent className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-lg">Account Status</h3>
+                      {partnerProfile.status === 'suspended' && <Badge variant="destructive">Suspended</Badge>}
+                      {partnerProfile.status === 'inactive' && <Badge variant="secondary">Inactive</Badge>}
+                      {partnerProfile.status === 'active' && <Badge className="bg-emerald-500">Active</Badge>}
+                      {partnerProfile.status === 'trial' && <Badge className="bg-blue-500 hover:bg-blue-600">Trial</Badge>}
+                    </div>
+                    {partnerProfile.status === 'trial' && partnerProfile.trialExpiresAt && (
+                      <div className="text-sm text-muted-foreground flex flex-col">
+                        {partnerProfile.isTrialExpired ? (
+                          <span className="text-red-500 font-medium">Trial Expired</span>
+                        ) : (
+                          <>
+                            <span>Trial Period: {new Date(partnerProfile.trialStartDate).toLocaleDateString()} — {new Date(partnerProfile.trialExpiresAt).toLocaleDateString()}</span>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 max-w-md w-full space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-muted-foreground">API Usage</span>
+                      <span className="font-mono">
+                        {partnerProfile.apiUsage?.toLocaleString() || 0} / {partnerProfile.apiLimit?.toLocaleString() || 0}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full ${
+                          ((partnerProfile.apiUsage || 0) / (partnerProfile.apiLimit || 1)) > 0.9 
+                            ? 'bg-red-500' 
+                            : 'bg-indigo-500'
+                        }`}
+                        style={{ width: `${Math.min(((partnerProfile.apiUsage || 0) / (partnerProfile.apiLimit || 1)) * 100, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground text-right">
+                      {partnerProfile.apiLimit - (partnerProfile.apiUsage || 0)} requests remaining
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* ── KPI Cards ── */}
             {stats && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

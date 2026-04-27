@@ -4,6 +4,7 @@ const env = require('../config/env');
 const HttpError = require('../utils/httpError');
 const { hashPassword, verifyPassword } = require('../utils/password');
 const { signToken } = require('../utils/token');
+const emailService = require('../services/email.service');
 const {
   hashEmailForLookup,
   normalizeEmail,
@@ -48,18 +49,48 @@ const create = asyncHandler(async (req, res) => {
     throw new HttpError(409, 'User with this email already exists');
   }
 
+  const AdminSettings = require("../models/adminSettings.model");
+  const settings = await AdminSettings.getSettings();
+
+  const trialExpiresAt = new Date();
+  if (settings.trialEnabled) {
+    trialExpiresAt.setDate(trialExpiresAt.getDate() + (settings.trialDurationDays || 10));
+  } else {
+    // If trial is disabled, give them a day to setup and immediately ask for payment, or set as active if auto-activate is on
+    trialExpiresAt.setDate(trialExpiresAt.getDate() + 1);
+  }
+
+  const status = settings.autoActivateOnSignup ? "active" : "trial";
+  const approvedAt = settings.autoActivateOnSignup ? new Date() : null;
+  const apiLimit = settings.defaultApiLimit || 10000;
+
   const passwordHash = await hashPassword(password);
-  const user = await User.create({ name, email: normalizedEmail, passwordHash });
+  const user = await User.create({ 
+    name, 
+    email: normalizedEmail, 
+    passwordHash,
+    status,
+    trialExpiresAt,
+    approvedAt,
+    apiLimit
+  });
 
   logEvent({
     action: 'USER_SIGNUP',
     ownerUserId: user.id,
     userId: user.id,
     req,
-    metadata: { emailHash },
+    metadata: { emailHash, status, autoActivated: settings.autoActivateOnSignup },
   });
 
-  res.status(201).json({ id: user.id, name: user.name, email: user.email });
+  // Send welcome email (non-blocking)
+  emailService.sendWelcomeEmail({
+    email: normalizedEmail,
+    name: name,
+    status: status
+  }).catch(err => console.error("Welcome email failed:", err));
+
+  res.status(201).json({ id: user.id, name: user.name, email: user.email, status: user.status });
 });
 
 const login = asyncHandler(async (req, res) => {
@@ -92,8 +123,20 @@ const login = asyncHandler(async (req, res) => {
     throw new HttpError(401, 'Invalid email or password');
   }
 
+  if (user.status === 'inactive') {
+    throw new HttpError(403, user.deactivatedReason || 'Your account has been deactivated. Contact support.');
+  }
+
+  if (user.status === 'suspended') {
+    throw new HttpError(403, user.deactivatedReason || 'Your account is suspended.');
+  }
+
+  if (user.status === 'trial' && user.trialExpiresAt && new Date(user.trialExpiresAt) <= new Date()) {
+    throw new HttpError(403, 'Your trial period has expired. Please upgrade your account to continue.');
+  }
+
   const token = signToken(
-    { sub: user.id, email: user.email, role: 'user' },
+    { sub: user.id, email: user.email, role: user.role || 'user' },
     { secret: env.tokenSecret, expiresInSec: 60 * 60 * 12 }
   );
 
@@ -113,13 +156,16 @@ const login = asyncHandler(async (req, res) => {
 
 const me = asyncHandler(async (req, res) => {
   const userId = req.auth?.sub;
-  const user = await User.findById(userId).select('_id name email createdAt');
+  const user = await User.findById(userId).select('_id name email status role trialStartDate trialExpiresAt createdAt apiLimit apiUsage');
 
   if (!user) {
     throw new HttpError(404, 'User not found');
   }
 
-  res.json(user);
+  res.json({
+    ...user.toObject(),
+    isTrialExpired: user.status === 'trial' && user.trialExpiresAt && new Date(user.trialExpiresAt) <= new Date()
+  });
 });
 
 module.exports = { list, create, login, me };

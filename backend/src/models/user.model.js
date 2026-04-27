@@ -34,6 +34,28 @@ const userSchema = new Schema(
     },
     emailHash: { type: String, required: true, unique: true, index: true },
     passwordHash: { type: String, required: true },
+
+    // Account status: active, inactive, trial, suspended
+    status: {
+      type: String,
+      enum: ["active", "inactive", "trial", "suspended"],
+      default: "trial",
+      index: true,
+    },
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
+    trialStartDate: { type: Date, default: Date.now },
+    trialExpiresAt: { type: Date, default: null },
+    approvedAt: { type: Date, default: null },
+    deactivatedAt: { type: Date, default: null },
+    deactivatedReason: { type: String, default: "", trim: true },
+    
+    // API Quotas
+    apiLimit: { type: Number, default: 10000 },
+    apiUsage: { type: Number, default: 0 },
   },
   {
     timestamps: true,

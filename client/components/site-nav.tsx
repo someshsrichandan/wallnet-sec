@@ -25,7 +25,8 @@ export function SiteNav() {
     pathname.startsWith("/verify/") ||
     pathname.startsWith("/enroll/") ||
     pathname.startsWith("/admin/dashboard") ||
-    pathname.startsWith("/admin/partners")
+    pathname.startsWith("/admin/partners") ||
+    pathname.startsWith("/admin/super")
   ) {
     return null;
   }

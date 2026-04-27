@@ -29,7 +29,7 @@ const Chatbot: React.FC = () => {
   ];
 
   // Check if current path is allowed or starts with /admin (to include login/signup)
-  const isVisible = allowedPaths.includes(pathname) || pathname.startsWith('/admin/');
+  const isVisible = (allowedPaths.includes(pathname) || pathname.startsWith('/admin/')) && !pathname.startsWith('/admin/super');
 
   const [messages, setMessages] = useState<Message[]>([
     {

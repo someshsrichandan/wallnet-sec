@@ -35,7 +35,28 @@ module.exports = async (req, _res, next) => {
     try {
       const partnerKey = await PartnerKey.findOne({ keyId, active: true });
       if (!partnerKey) {
-        return next(new HttpError(403, "Invalid API key_id"));
+        return next(new HttpError(403, "Invalid API key_id or key is disabled"));
+      }
+
+      if (partnerKey.approvalStatus !== "approved") {
+        return next(new HttpError(403, "API key is pending admin approval or has been rejected"));
+      }
+
+      // Check owner user status
+      const User = require("../models/user.model");
+      const owner = await User.findById(partnerKey.ownerUserId);
+      if (!owner) {
+         return next(new HttpError(403, "API key owner account not found"));
+      }
+      if (owner.status === "inactive" || owner.status === "suspended") {
+         return next(new HttpError(403, `API key owner account is ${owner.status}`));
+      }
+      if (owner.status === "trial" && owner.trialExpiresAt && new Date(owner.trialExpiresAt) <= new Date()) {
+         return next(new HttpError(403, "API key owner trial period has expired"));
+      }
+
+      if (owner.apiUsage >= owner.apiLimit) {
+         return next(new HttpError(429, "API usage limit exceeded. Please contact support to upgrade."));
       }
 
       const secretValid = await partnerKey.verifySecret(keySecret);
@@ -47,6 +68,9 @@ module.exports = async (req, _res, next) => {
       partnerKey.usageCount += 1;
       partnerKey.lastUsedAt = new Date();
       await partnerKey.save();
+      
+      owner.apiUsage += 1;
+      await owner.save();
 
       // Attach partner info for downstream
       req.partner = {
@@ -127,11 +151,30 @@ module.exports = async (req, _res, next) => {
       }
       const partnerKey = await PartnerKey.findOne(query);
       if (partnerKey) {
+        if (partnerKey.approvalStatus !== "approved") {
+          return next(new HttpError(403, "API key is pending admin approval or has been rejected"));
+        }
+
+        const User = require("../models/user.model");
+        const owner = await User.findById(partnerKey.ownerUserId);
+        if (owner && (owner.status === "inactive" || owner.status === "suspended" || (owner.status === "trial" && owner.trialExpiresAt && new Date(owner.trialExpiresAt) <= new Date()))) {
+          return next(new HttpError(403, "API key owner account is inactive, suspended, or trial has expired"));
+        }
+
+        if (owner && owner.apiUsage >= owner.apiLimit) {
+          return next(new HttpError(429, "API usage limit exceeded. Please contact support to upgrade."));
+        }
+
         accepted = true;
         // Track usage
         partnerKey.usageCount += 1;
         partnerKey.lastUsedAt = new Date();
         await partnerKey.save();
+        
+        if (owner) {
+          owner.apiUsage += 1;
+          await owner.save();
+        }
         // Attach owner info for downstream use
         req.partner = {
           keyId: partnerKey.keyId || partnerKey.apiKey,

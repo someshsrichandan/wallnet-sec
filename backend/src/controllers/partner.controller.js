@@ -33,6 +33,7 @@ const listKeys = asyncHandler(async (req, res) => {
     webhookUrl: key.webhookUrl,
     callbackAllowlist: key.callbackAllowlist,
     active: key.active,
+    approvalStatus: key.approvalStatus,
     usageCount: key.usageCount,
     lastUsedAt: key.lastUsedAt,
     createdAt: key.createdAt,
@@ -80,6 +81,13 @@ const generateKey = asyncHandler(async (req, res) => {
   const { keyId, keySecret, keySecretHash, webhookSecret } =
     await PartnerKey.generateKeyPair(mode);
 
+  const AdminSettings = require("../models/adminSettings.model");
+  const settings = await AdminSettings.getSettings();
+
+  const approvalStatus = settings.requireApiApproval ? "pending" : "approved";
+  const approvedAt = settings.requireApiApproval ? null : new Date();
+  const active = !settings.requireApiApproval;
+
   const partnerKey = new PartnerKey({
     partnerId,
     ownerUserId,
@@ -90,6 +98,9 @@ const generateKey = asyncHandler(async (req, res) => {
     mode,
     webhookUrl,
     callbackAllowlist,
+    approvalStatus,
+    approvedAt,
+    active
   });
   // Keep a deterministic, encrypted fallback key value for legacy x-api-key lookups.
   partnerKey.setApiKey(keyId);
