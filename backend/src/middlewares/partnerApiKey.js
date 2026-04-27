@@ -1,6 +1,7 @@
 const env = require("../config/env");
 const HttpError = require("../utils/httpError");
 const PartnerKey = require("../models/partnerKey.model");
+const DailyUsage = require("../models/dailyUsage.model");
 const { hashDeterministic } = require("../utils/fieldEncryption");
 
 /**
@@ -15,6 +16,29 @@ const { hashDeterministic } = require("../utils/fieldEncryption");
  *   req.partner = { keyId, partnerId, mode, ownerUserId, keyDocId, authMethod }
  *   req.partnerApiKeyValidated = true
  */
+const trackUsage = async (owner, partnerKey) => {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  // Increment counters
+  partnerKey.usageCount += 1;
+  partnerKey.lastUsedAt = new Date();
+  await partnerKey.save();
+
+  owner.apiUsage += 1;
+  await owner.save();
+
+  // Async: Increment daily usage (don't block the request)
+  DailyUsage.findOneAndUpdate(
+    { ownerUserId: owner._id, date: today },
+    { 
+      $inc: { count: 1 },
+      $setOnInsert: { partnerId: partnerKey.partnerId }
+    },
+    { upsert: true, new: true }
+  ).catch(err => console.error("Failed to track daily usage:", err));
+};
+
 module.exports = async (req, _res, next) => {
   // ── 1. Try Authorization: Basic header (Razorpay-style) ───────────
   const authHeader = req.headers.authorization || "";
@@ -65,12 +89,7 @@ module.exports = async (req, _res, next) => {
       }
 
       // Track usage
-      partnerKey.usageCount += 1;
-      partnerKey.lastUsedAt = new Date();
-      await partnerKey.save();
-      
-      owner.apiUsage += 1;
-      await owner.save();
+      await trackUsage(owner, partnerKey);
 
       // Attach partner info for downstream
       req.partner = {
@@ -167,13 +186,12 @@ module.exports = async (req, _res, next) => {
 
         accepted = true;
         // Track usage
-        partnerKey.usageCount += 1;
-        partnerKey.lastUsedAt = new Date();
-        await partnerKey.save();
-        
         if (owner) {
-          owner.apiUsage += 1;
-          await owner.save();
+          await trackUsage(owner, partnerKey);
+        } else {
+           partnerKey.usageCount += 1;
+           partnerKey.lastUsedAt = new Date();
+           await partnerKey.save();
         }
         // Attach owner info for downstream use
         req.partner = {

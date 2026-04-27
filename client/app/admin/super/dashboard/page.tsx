@@ -23,7 +23,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requestJson } from "@/lib/http";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, parseISO } from "date-fns";
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+} from 'recharts';
 
 type AnalyticsData = {
   totalUsage: number;
@@ -61,6 +70,7 @@ type SuperAdminOverview = {
     paymentAmount: number;
     paymentCurrency: string;
   };
+  usageHistory: Array<{ date: string; count: number }>;
   generatedAt: string;
 };
 
@@ -68,6 +78,7 @@ export default function SuperAdminDashboard() {
   const [data, setData] = useState<SuperAdminOverview | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState("30d");
 
   useEffect(() => {
     const fetchOverview = async () => {
@@ -76,7 +87,7 @@ export default function SuperAdminDashboard() {
         if (!token) return;
 
         const [overviewResult, analyticsResult] = await Promise.all([
-          requestJson<SuperAdminOverview>("/api/super-admin/dashboard", {
+          requestJson<SuperAdminOverview>(`/api/super-admin/dashboard?range=${range}`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
           requestJson<AnalyticsData>("/api/super-admin/analytics?days=7", {
@@ -93,7 +104,7 @@ export default function SuperAdminDashboard() {
     };
 
     fetchOverview();
-  }, []);
+  }, [range]);
 
   if (loading) {
     return (
@@ -174,6 +185,79 @@ export default function SuperAdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border-border">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-red-500" />
+              Global API Traffic
+            </CardTitle>
+            <CardDescription>Consolidated API call volume across all partners</CardDescription>
+          </div>
+          <div className="flex bg-muted p-1 rounded-md">
+            {[
+              { label: "1D", value: "1d" },
+              { label: "7D", value: "7d" },
+              { label: "30D", value: "30d" },
+              { label: "1Y", value: "1y" },
+              { label: "ALL", value: "total" }
+            ].map((btn) => (
+              <button
+                key={btn.value}
+                onClick={() => setRange(btn.value)}
+                className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${
+                  range === btn.value 
+                    ? "bg-background text-red-600 shadow-sm" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.usageHistory}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
+                <XAxis 
+                  dataKey="date" 
+                  tickFormatter={(str) => format(parseISO(str), 'MMM d')}
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis 
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(val) => val.toLocaleString()}
+                />
+                <Tooltip 
+                  cursor={{ fill: 'rgba(239, 68, 68, 0.05)' }}
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  labelFormatter={(str) => format(parseISO(str as string), 'MMMM d, yyyy')}
+                />
+                <Bar 
+                  dataKey="count" 
+                  fill="url(#colorUsage)" 
+                  radius={[4, 4, 0, 0]}
+                  barSize={30}
+                >
+                  <defs>
+                    <linearGradient id="colorUsage" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0.2}/>
+                    </linearGradient>
+                  </defs>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="border-border">

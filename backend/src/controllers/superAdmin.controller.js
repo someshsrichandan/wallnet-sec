@@ -2,6 +2,7 @@ const User = require("../models/user.model");
 const PartnerKey = require("../models/partnerKey.model");
 const AdminSettings = require("../models/adminSettings.model");
 const AuditLog = require("../models/auditLog.model");
+const DailyUsage = require("../models/dailyUsage.model");
 const asyncHandler = require("../utils/asyncHandler");
 const HttpError = require("../utils/httpError");
 const env = require("../config/env");
@@ -111,6 +112,23 @@ const getDashboardOverview = asyncHandler(async (req, res) => {
     AdminSettings.getSettings(),
   ]);
 
+  // Global usage history
+  const range = req.query.range || "30d";
+  const startDate = new Date();
+  startDate.setUTCHours(0, 0, 0, 0);
+
+  if (range === "1d") startDate.setDate(startDate.getDate() - 1);
+  else if (range === "7d") startDate.setDate(startDate.getDate() - 7);
+  else if (range === "1y") startDate.setFullYear(startDate.getFullYear() - 1);
+  else if (range === "total") startDate.setTime(0);
+  else startDate.setDate(startDate.getDate() - 30); // Default 30d
+
+  const usageHistory = await DailyUsage.aggregate([
+    { $match: { date: { $gte: startDate } } },
+    { $group: { _id: "$date", count: { $sum: "$count" } } },
+    { $sort: { _id: 1 } }
+  ]);
+
   // Expired trial users
   const expiredTrialUsers = await User.countDocuments({
     status: "trial",
@@ -131,6 +149,7 @@ const getDashboardOverview = asyncHandler(async (req, res) => {
       recentSignups,
       last24hAuditCount,
     },
+    usageHistory: usageHistory.map(h => ({ date: h._id, count: h.count })),
     settings: {
       trialDurationDays: settings.trialDurationDays,
       trialEnabled: settings.trialEnabled,
@@ -248,8 +267,33 @@ const getPartnerDetail = asyncHandler(async (req, res) => {
     .select("action severity partnerId createdAt metadata")
     .lean();
 
+  const range = req.query.range || "30d";
+  const startDate = new Date();
+  startDate.setUTCHours(0, 0, 0, 0);
+
+  if (range === "1d") startDate.setDate(startDate.getDate() - 1);
+  else if (range === "7d") startDate.setDate(startDate.getDate() - 7);
+  else if (range === "1y") startDate.setFullYear(startDate.getFullYear() - 1);
+  else if (range === "total") startDate.setTime(0);
+  else startDate.setDate(startDate.getDate() - 30);
+
+  const usageHistory = await DailyUsage.find({
+    ownerUserId: userId,
+    date: { $gte: startDate }
+  }).sort({ date: 1 }).lean();
+
+  const keyUsageStats = apiKeys.map(k => ({
+    name: k.keyId.substring(0, 8),
+    usage: k.usageCount || 0
+  })).sort((a,b) => b.usage - a.usage).slice(0, 5);
+
+  const logStats = await AuditLog.aggregate([
+    { $match: { $or: [{ userId: userId.toString() }, { ownerUserId: userId.toString() }] } },
+    { $group: { _id: "$severity", count: { $sum: 1 } } }
+  ]);
+
   res.json({
-    user: {
+    partner: {
       ...user,
       id: user._id,
       email: decryptString(user.email),
@@ -268,6 +312,9 @@ const getPartnerDetail = asyncHandler(async (req, res) => {
           : "",
     })),
     recentLogs,
+    usageHistory: usageHistory.map(h => ({ date: h.date, count: h.count })),
+    keyUsageStats,
+    logStats: logStats.map(s => ({ name: s._id, value: s.count })),
   });
 });
 
@@ -464,9 +511,9 @@ const sendPartnerEmail = asyncHandler(async (req, res) => {
     max: 100,
   });
 
-  const { subject, message } = req.body;
+  const { subject, message, attachments } = req.body;
   assertRequiredString("subject", subject, { min: 1, max: 200 });
-  assertRequiredString("message", message, { min: 1, max: 5000 });
+  assertRequiredString("message", message, { min: 1, max: 50000 }); // Larger for HTML
 
   const user = await User.findById(userId);
   if (!user) {
@@ -480,17 +527,18 @@ const sendPartnerEmail = asyncHandler(async (req, res) => {
     to: decryptedEmail,
     subject: subject,
     html: `
-      <div style="font-family: sans-serif; padding: 20px;">
-        <h2>Message from WallNet-Sec Admin</h2>
+      <div style="font-family: sans-serif; padding: 20px; color: #1e293b;">
+        <h2 style="color: #ef4444;">Message from WallNet-Sec Support</h2>
         <p>Hello ${decryptedName},</p>
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px;">
-          ${message.replace(/\n/g, "<br/>")}
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; line-height: 1.6;">
+          ${message}
         </div>
-        <p style="font-size: 12px; color: #64748b; margin-top: 20px;">
-          Sent by ${req.admin?.email} via WallNet-Sec Super Admin Console.
+        <p style="font-size: 11px; color: #64748b; margin-top: 25px; border-top: 1px solid #f1f5f9; pt-10">
+          This message was sent by the platform administrator regarding your account.
         </p>
       </div>
     `,
+    attachments: attachments || []
   });
 
   await logEvent({
