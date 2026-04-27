@@ -21,7 +21,6 @@ const {
   parsePagination,
 } = require("../utils/validators");
 const { logEvent } = require("../services/auditLog.service");
-const emailService = require("../services/email.service");
 
 // ─── Super Admin Login ──────────────────────────────────────────────────────
 
