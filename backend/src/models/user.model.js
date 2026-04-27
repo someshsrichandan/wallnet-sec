@@ -25,7 +25,13 @@ const userSchema = new Schema(
       trim: true,
       default: () => randomUUID(),
     },
-    name: { type: String, required: true, trim: true },
+    name: { 
+      type: Schema.Types.Mixed, 
+      required: true, 
+      trim: true,
+      set: (value) => encryptString(value),
+      get: (value) => decryptString(value),
+    },
     email: {
       type: Schema.Types.Mixed,
       required: true,

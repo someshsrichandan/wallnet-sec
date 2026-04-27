@@ -8,6 +8,7 @@ const HttpError = require("../utils/httpError");
 const env = require("../config/env");
 const { signToken } = require("../utils/token");
 const { verifyPassword } = require("../utils/password");
+const emailService = require("../services/email.service");
 const {
   hashEmailForLookup,
   normalizeEmail,
@@ -350,6 +351,18 @@ const activatePartner = asyncHandler(async (req, res) => {
     metadata: { targetUserId: userId, userName: user.name },
   });
 
+  // Automated Email Notification
+  try {
+    await emailService.sendEmail({
+      to: user.email,
+      subject: "Your Account has been Activated - WallNet-Sec",
+      text: `Hello ${user.name},\n\nYour partner account has been approved and activated. You can now login and generate API keys.\n\nBest Regards,\nWallNet-Sec Team`,
+      html: `<h3>Hello ${user.name},</h3><p>Your partner account has been <strong>approved and activated</strong>.</p><p>You can now login to your dashboard and generate API keys to start using our services.</p><br/><p>Best Regards,<br/>WallNet-Sec Team</p>`
+    });
+  } catch (err) {
+    console.error("Failed to send activation email:", err);
+  }
+
   res.json({
     message: "Partner activated successfully",
     user: { id: user._id, name: user.name, status: user.status },
@@ -388,6 +401,18 @@ const deactivatePartner = asyncHandler(async (req, res) => {
     metadata: { targetUserId: userId, userName: user.name, reason },
   });
 
+  // Automated Email Notification
+  try {
+    await emailService.sendEmail({
+      to: user.email,
+      subject: "Account Notice: Deactivation - WallNet-Sec",
+      text: `Hello ${user.name},\n\nYour account has been deactivated for the following reason: ${reason}\n\nPlease contact support if you believe this is an error.\n\nBest Regards,\nWallNet-Sec Team`,
+      html: `<h3>Hello ${user.name},</h3><p>Your account has been <strong>deactivated</strong>.</p><p><strong>Reason:</strong> ${reason}</p><p>Please contact support if you believe this is an error.</p><br/><p>Best Regards,<br/>WallNet-Sec Team</p>`
+    });
+  } catch (err) {
+    console.error("Failed to send deactivation email:", err);
+  }
+
   res.json({
     message: "Partner deactivated. They cannot login and all their API keys are disabled.",
     user: { id: user._id, name: user.name, status: user.status },
@@ -424,6 +449,18 @@ const suspendPartner = asyncHandler(async (req, res) => {
     req,
     metadata: { targetUserId: userId, userName: user.name, reason },
   });
+
+  // Automated Email Notification
+  try {
+    await emailService.sendEmail({
+      to: user.email,
+      subject: "Security Alert: Account Suspended - WallNet-Sec",
+      text: `CRITICAL: Hello ${user.name},\n\nYour account has been suspended for security reasons: ${reason}\n\nAll API access has been revoked immediately.\n\nBest Regards,\nSecurity Team`,
+      html: `<h2 style="color: red;">Security Alert</h2><h3>Hello ${user.name},</h3><p>Your account has been <strong>suspended</strong> for security reasons.</p><p><strong>Reason:</strong> ${reason}</p><p>All API access has been revoked immediately. Please contact the security team if you have questions.</p><br/><p>Best Regards,<br/>Security Team</p>`
+    });
+  } catch (err) {
+    console.error("Failed to send suspension email:", err);
+  }
 
   res.json({
     message: "Partner suspended.",

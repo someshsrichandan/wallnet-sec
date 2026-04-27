@@ -17,7 +17,6 @@ import {
 
 import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
-import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Sidebar,
   SidebarContent,
@@ -140,9 +139,7 @@ export function AppSidebarSuper({ ...props }: React.ComponentProps<typeof Sideba
         <NavMain items={activeNavMain} />
       </SidebarContent>
       <SidebarFooter>
-        <div className="flex items-center justify-end px-2 pb-1">
-          <ThemeToggle />
-        </div>
+
         <NavUser
           user={{
             name: currentUser.name,

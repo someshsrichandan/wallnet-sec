@@ -1,4 +1,10 @@
 const { Schema, model } = require("mongoose");
+const {
+  decryptString,
+  encryptString,
+  encryptJson,
+  decryptJson,
+} = require("../utils/fieldEncryption");
 
 const auditLogSchema = new Schema(
   {
@@ -43,7 +49,12 @@ const auditLogSchema = new Schema(
     ownerUserId: { type: String, default: "", trim: true, index: true },
     userId: { type: String, default: "", trim: true, index: true },
     sessionToken: { type: String, default: "", trim: true, index: true },
-    ip: { type: String, default: "" },
+    ip: { 
+      type: Schema.Types.Mixed, 
+      default: "",
+      set: (v) => encryptString(v),
+      get: (v) => decryptString(v)
+    },
     userAgent: { type: String, default: "" },
     requestId: { type: String, default: "" },
     fingerprint: { type: String, default: "" },
@@ -53,7 +64,12 @@ const auditLogSchema = new Schema(
       lat: { type: Number, default: 0 },
       lon: { type: Number, default: 0 },
     },
-    metadata: { type: Schema.Types.Mixed, default: {} },
+    metadata: { 
+      type: Schema.Types.Mixed, 
+      default: {},
+      set: (v) => encryptJson(v),
+      get: (v) => decryptJson(v, {})
+    },
   },
   { timestamps: true },
 );

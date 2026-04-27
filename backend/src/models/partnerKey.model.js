@@ -18,7 +18,12 @@ const partnerKeySchema = new Schema(
     // Razorpay-style key_id + key_secret
     keyId: { type: String, required: true, unique: true, index: true },
     keySecretHash: { type: String, required: true },
-    webhookSecret: { type: String, default: "" },
+    webhookSecret: { 
+      type: Schema.Types.Mixed, 
+      default: "",
+      set: (value) => encryptString(value),
+      get: (value) => decryptString(value),
+    },
 
     // Legacy/fallback storage for x-api-key compatibility
     apiKey: { type: String, default: "", index: true, sparse: true },
