@@ -137,6 +137,11 @@ const getEmailSettingsForPartner = asyncHandler(async (req, res) => {
     }),
   );
 
+  // Security Check: Ensure the requester (partner) is only accessing their own settings
+  if (req.partner && req.partner.partnerId !== partnerId) {
+    throw new HttpError(403, "Access denied: You can only access settings for your own partnerId");
+  }
+
   const settings = await EmailSettings.findOne({ partnerId, enabled: true });
   if (!settings) {
     throw new HttpError(404, "Partner email settings not configured");
@@ -377,6 +382,11 @@ const getAiAgentSettingsForPartner = asyncHandler(async (req, res) => {
       max: 80,
     }),
   );
+
+  // Security Check: Ensure the requester (partner) is only accessing their own settings
+  if (req.partner && req.partner.partnerId !== partnerId) {
+    throw new HttpError(403, "Access denied: You can only access settings for your own partnerId");
+  }
 
   const settings = await AiAgentSettings.findOne({ partnerId, enabled: true });
   if (!settings) {

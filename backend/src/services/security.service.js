@@ -309,6 +309,8 @@ const signWebhookPayload = (bodyString, webhookSecret) => {
 
 // ─── Webhook Delivery ──────────────────────────────────────────────────────
 
+const WebhookLog = require("../models/webhookLog.model");
+
 const deliverWebhook = async ({
   url,
   payload,
@@ -316,8 +318,15 @@ const deliverWebhook = async ({
   sessionToken,
   req,
   webhookSecret,
+  ownerUserId, // Pass ownerUserId to link the log
 }) => {
   if (!url) return { delivered: false, reason: "no_url" };
+
+  const start = Date.now();
+  let statusCode = 0;
+  let responseText = "";
+  let delivered = false;
+  let errorMessage = "";
 
   try {
     const timestamp = new Date().toISOString();
@@ -353,8 +362,14 @@ const deliverWebhook = async ({
     });
 
     clearTimeout(timer);
-
-    const delivered = response.ok;
+    statusCode = response.status;
+    delivered = response.ok;
+    
+    try {
+      responseText = await response.text();
+    } catch {
+      responseText = "could_not_parse_response";
+    }
 
     await logEvent({
       action: delivered ? "WEBHOOK_SENT" : "WEBHOOK_FAILED",
@@ -369,8 +384,8 @@ const deliverWebhook = async ({
       },
     });
 
-    return { delivered, statusCode: response.status };
   } catch (error) {
+    errorMessage = error.message;
     await logEvent({
       action: "WEBHOOK_FAILED",
       partnerId,
@@ -382,9 +397,25 @@ const deliverWebhook = async ({
         event: payload?.event,
       },
     });
-
-    return { delivered: false, reason: error.message };
+  } finally {
+    // Persistent Webhook Log
+    if (ownerUserId) {
+      WebhookLog.create({
+        partnerId,
+        ownerUserId,
+        url,
+        event: payload.event || "unknown",
+        payload,
+        status: statusCode,
+        response: responseText,
+        success: delivered,
+        errorMessage,
+        latencyMs: Date.now() - start,
+      }).catch(err => console.error("[WebhookLog] Failed to create log:", err.message));
+    }
   }
+
+  return { delivered, statusCode, reason: errorMessage };
 };
 
 module.exports = {

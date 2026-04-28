@@ -3,6 +3,7 @@ const HttpError = require("../utils/httpError");
 const PartnerKey = require("../models/partnerKey.model");
 const DailyUsage = require("../models/dailyUsage.model");
 const { hashDeterministic } = require("../utils/fieldEncryption");
+const { checkQuotaAlerts } = require("../services/quotaAlert.service");
 
 /**
  * Razorpay-style partner authentication middleware.
@@ -27,6 +28,9 @@ const trackUsage = async (owner, partnerKey) => {
 
   owner.apiUsage += 1;
   await owner.save();
+
+  // Async: Check for quota alerts
+  checkQuotaAlerts(owner).catch(err => console.error("Quota alert check failed:", err));
 
   // Async: Increment daily usage (don't block the request)
   DailyUsage.findOneAndUpdate(

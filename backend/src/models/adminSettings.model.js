@@ -1,4 +1,5 @@
 const { Schema, model } = require("mongoose");
+const { encryptString, decryptString } = require("../utils/fieldEncryption");
 
 const adminSettingsSchema = new Schema(
   {
@@ -48,16 +49,25 @@ const adminSettingsSchema = new Schema(
       trim: true,
     },
 
+    // Global Announcements
+    announcementText: { type: String, default: "", trim: true },
+    announcementEnabled: { type: Boolean, default: false },
+
     // SMTP Configuration
     smtpHost: { type: String, default: "" },
     smtpPort: { type: Number, default: 587 },
     smtpUser: { type: String, default: "" },
-    smtpPass: { type: String, default: "" },
+    smtpPass: { 
+      type: String, 
+      default: "",
+      set: (v) => encryptString(v),
+      get: (v) => decryptString(v),
+    },
     smtpFrom: { type: String, default: "WallNet-Sec <noreply@wallnet-sec.com>" },
     smtpService: { type: String, default: "custom" }, // 'gmail', 'outlook', 'custom', 'sendgrid', etc.
     smtpSecure: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { getters: true }, toObject: { getters: true } }
 );
 
 // Ensure only one settings document exists

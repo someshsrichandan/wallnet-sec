@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const User = require("../models/user.model");
 const PartnerKey = require("../models/partnerKey.model");
 const AdminSettings = require("../models/adminSettings.model");
@@ -38,14 +39,21 @@ const login = asyncHandler(async (req, res) => {
     throw new HttpError(503, "Super admin credentials not configured");
   }
 
-  if (
-    email.trim().toLowerCase() !== env.superAdminEmail.trim().toLowerCase() ||
-    password !== env.superAdminPassword
-  ) {
+  // Use timingSafeEqual to prevent timing attacks on credentials
+  const emailMatch = email.trim().toLowerCase() === env.superAdminEmail.trim().toLowerCase();
+  
+  // For password, we use buffer comparison
+  const submittedPassBuf = Buffer.from(password);
+  const actualPassBuf = Buffer.from(env.superAdminPassword);
+  const passwordMatch = 
+    submittedPassBuf.length === actualPassBuf.length && 
+    crypto.timingSafeEqual(submittedPassBuf, actualPassBuf);
+
+  if (!emailMatch || !passwordMatch) {
     await logEvent({
       action: "SUPER_ADMIN_LOGIN_FAILURE",
       req,
-      metadata: { reason: "INVALID_CREDENTIALS" },
+      metadata: { reason: "INVALID_CREDENTIALS", email },
     });
     throw new HttpError(401, "Invalid super admin credentials");
   }
@@ -157,6 +165,8 @@ const getDashboardOverview = asyncHandler(async (req, res) => {
       autoActivateOnSignup: settings.autoActivateOnSignup,
       paymentAmount: settings.paymentAmount,
       paymentCurrency: settings.paymentCurrency,
+      announcementText: settings.announcementText,
+      announcementEnabled: settings.announcementEnabled,
     },
     generatedAt: now.toISOString(),
   });
@@ -597,21 +607,30 @@ const sendTestEmail = asyncHandler(async (req, res) => {
   const { to } = req.body;
   assertRequiredString("to", to, { min: 5, max: 200 });
 
-  await emailService.sendEmail({
-    to,
-    subject: "WallNet-Sec SMTP Test Connection",
-    html: `
-      <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-        <h2 style="color: #059669;">✅ SMTP Connection Successful</h2>
-        <p>This is a test email from your WallNet-Sec Super Admin Console.</p>
-        <p>If you received this, your SMTP settings in the <code>.env</code> file are correctly configured.</p>
-        <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e2e8f0;" />
-        <p style="font-size: 12px; color: #64748b;">Sent at: ${new Date().toUTCString()}</p>
-      </div>
-    `,
-  });
-
-  res.json({ message: "Test email sent successfully" });
+  try {
+    await emailService.sendEmail({
+      to,
+      subject: "WallNet-Sec SMTP Test Connection",
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #059669;">✅ SMTP Connection Successful</h2>
+          <p>This is a test email from your WallNet-Sec Super Admin Console.</p>
+          <p>If you received this, your SMTP settings in the <code>.env</code> file or <code>AdminSettings</code> are correctly configured.</p>
+          <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e2e8f0;" />
+          <p style="font-size: 12px; color: #64748b;">Sent at: ${new Date().toUTCString()}</p>
+        </div>
+      `,
+    });
+    res.json({ message: "Test email sent successfully" });
+  } catch (err) {
+    console.error("SMTP Test failed:", err);
+    res.status(500).json({ 
+      message: "SMTP Connection failed", 
+      error: err.message,
+      code: err.code,
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined
+    });
+  }
 });
 
 // ─── Approve API Key ────────────────────────────────────────────────────────
@@ -844,6 +863,95 @@ const getApiAnalytics = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * ─── Security Analytics (Threat Map) ─────────────────────────────────────────
+ */
+const getSecurityAnalytics = asyncHandler(async (req, res) => {
+  const days = req.query.days ? assertInteger("days", req.query.days, { min: 1, max: 90 }) : 7;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const [
+    securityEvents,
+    topRiskPartners,
+    riskDistribution,
+    webhookFailures,
+  ] = await Promise.all([
+    // Grouped security events
+    AuditLog.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: since },
+          action: { $in: ["VERIFY_FAIL", "SESSION_LOCKED", "HONEYPOT_HIT", "IMPOSSIBLE_TRAVEL", "DEVICE_TRUST_LOW"] },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          failed: { $sum: { $cond: [{ $eq: ["$action", "VERIFY_FAIL"] }, 1, 0] } },
+          locked: { $sum: { $cond: [{ $eq: ["$action", "SESSION_LOCKED"] }, 1, 0] } },
+          honeypot: { $sum: { $cond: [{ $eq: ["$action", "HONEYPOT_HIT"] }, 1, 0] } },
+          risk: { $sum: { $cond: [{ $in: ["$action", ["IMPOSSIBLE_TRAVEL", "DEVICE_TRUST_LOW"]] }, 1, 0] } },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+    // Partners with highest failure rates
+    AuditLog.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: since },
+          action: { $in: ["VERIFY_FAIL", "VERIFY_PASS"] },
+        },
+      },
+      {
+        $group: {
+          _id: "$partnerId",
+          failed: { $sum: { $cond: [{ $eq: ["$action", "VERIFY_FAIL"] }, 1, 0] } },
+          passed: { $sum: { $cond: [{ $eq: ["$action", "VERIFY_PASS"] }, 1, 0] } },
+        },
+      },
+      {
+        $project: {
+          partnerId: "$_id",
+          failed: 1,
+          passed: 1,
+          total: { $add: ["$failed", "$passed"] },
+          failureRate: {
+            $cond: [
+              { $eq: [{ $add: ["$failed", "$passed"] }, 0] },
+              0,
+              { $divide: ["$failed", { $add: ["$failed", "$passed"] }] },
+            ],
+          },
+        },
+      },
+      { $sort: { failureRate: -1 } },
+      { $limit: 10 },
+    ]),
+    // Severity distribution
+    AuditLog.aggregate([
+      { $match: { createdAt: { $gte: since } } },
+      { $group: { _id: "$severity", count: { $sum: 1 } } },
+    ]),
+    // Webhook failures
+    require("../models/webhookLog.model").aggregate([
+      { $match: { createdAt: { $gte: since }, success: false } },
+      { $group: { _id: "$partnerId", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 },
+    ]),
+  ]);
+
+  res.json({
+    days,
+    securityEvents,
+    topRiskPartners,
+    riskDistribution,
+    webhookFailures,
+    generatedAt: new Date().toISOString(),
+  });
+});
+
 // ─── Get Admin Settings ─────────────────────────────────────────────────────
 
 const getSettings = asyncHandler(async (_req, res) => {
@@ -867,6 +975,8 @@ const updateSettings = asyncHandler(async (req, res) => {
     "deactivationMessage",
     "trialExpiredMessage",
     "pendingApprovalMessage",
+    "announcementText",
+    "announcementEnabled",
   ];
 
   const updates = {};
@@ -983,6 +1093,79 @@ const extendTrial = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * ─── Impersonate Partner ──────────────────────────────────────────────────
+ */
+const impersonatePartner = asyncHandler(async (req, res) => {
+  const userId = assertRequiredString("userId", req.params.userId, {
+    min: 1,
+    max: 100,
+  });
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new HttpError(404, "Partner not found");
+  }
+
+  // Generate a token as if it was the partner themselves
+  // We use their real sub and email, but we log that it was an impersonation
+  const token = signToken(
+    { sub: user._id.toString(), email: user.email, role: user.role || "user", impersonated: true },
+    { secret: env.tokenSecret, expiresInSec: 60 * 60 } // 1 hour for impersonation
+  );
+
+  await logEvent({
+    action: "SUPER_ADMIN_IMPERSONATE_PARTNER",
+    userId: "superadmin",
+    req,
+    metadata: { 
+      targetUserId: userId, 
+      targetEmail: user.email,
+      adminEmail: req.admin?.email 
+    },
+  });
+
+  res.json({
+    token,
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+    message: `You are now impersonating ${user.name}. Session valid for 1 hour.`
+  });
+});
+
+/**
+ * ─── Prune Inactive Trials ──────────────────────────────────────────────────
+ */
+const pruneInactiveTrials = asyncHandler(async (req, res) => {
+  const days = assertInteger("days", req.body.days || 30, { min: 1, max: 365 });
+  const cutOff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const result = await User.updateMany(
+    { 
+      status: "trial", 
+      trialExpiresAt: { $lte: cutOff },
+      apiUsage: 0 // Only prune if they never used it
+    },
+    { $set: { status: "inactive", deactivatedReason: "Pruned due to inactivity" } }
+  );
+
+  await logEvent({
+    action: "SUPER_ADMIN_PRUNE_TRIALS",
+    userId: "superadmin",
+    req,
+    metadata: { days, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount },
+  });
+
+  res.json({ 
+    message: `Pruned ${result.modifiedCount} inactive trial accounts.`,
+    stats: result 
+  });
+});
+
 module.exports = {
   login,
   getDashboardOverview,
@@ -1002,4 +1185,7 @@ module.exports = {
   updateSettings,
   getAdminAuditLogs,
   extendTrial,
+  impersonatePartner,
+  pruneInactiveTrials,
+  getSecurityAnalytics,
 };

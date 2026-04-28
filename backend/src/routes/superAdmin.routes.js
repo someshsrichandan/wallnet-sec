@@ -20,7 +20,9 @@ router.post("/partners/:userId/suspend", superAdminController.suspendPartner);
 router.post("/partners/:userId/extend-trial", superAdminController.extendTrial);
 router.put("/partners/:userId/account", superAdminController.updatePartnerAccount);
 router.post("/partners/:userId/email", superAdminController.sendPartnerEmail);
+router.post("/partners/:userId/impersonate", superAdminController.impersonatePartner);
 router.post("/settings/test-email", superAdminController.sendTestEmail);
+router.post("/settings/prune-trials", superAdminController.pruneInactiveTrials);
 
 // API Key approval
 router.get("/api-keys", superAdminController.listAllApiKeys);
@@ -29,6 +31,7 @@ router.post("/api-keys/:keyId/reject", superAdminController.rejectApiKey);
 
 // Analytics
 router.get("/analytics", superAdminController.getApiAnalytics);
+router.get("/analytics/security", superAdminController.getSecurityAnalytics);
 
 // Audit logs
 router.get("/audit-logs", superAdminController.getAdminAuditLogs);
