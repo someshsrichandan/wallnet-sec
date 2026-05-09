@@ -336,16 +336,23 @@ const activatePartner = asyncHandler(async (req, res) => {
     max: 100,
   });
 
-  const user = await User.findById(userId);
-  if (!user) {
+  // Use updateOne to avoid re-running encryption setters / emailHash pre-validate hook
+  const result = await User.findByIdAndUpdate(
+    userId,
+    {
+      $set: {
+        status: "active",
+        approvedAt: new Date(),
+        deactivatedAt: null,
+        deactivatedReason: "",
+      },
+    },
+    { new: true, runValidators: false }
+  );
+
+  if (!result) {
     throw new HttpError(404, "User not found");
   }
-
-  user.status = "active";
-  user.approvedAt = new Date();
-  user.deactivatedAt = null;
-  user.deactivatedReason = "";
-  await user.save();
 
   // Activate all their approved API keys
   await PartnerKey.updateMany(
@@ -357,16 +364,16 @@ const activatePartner = asyncHandler(async (req, res) => {
     action: "SUPER_ADMIN_ACTIVATE_PARTNER",
     userId: "superadmin",
     req,
-    metadata: { targetUserId: userId, userName: user.name },
+    metadata: { targetUserId: userId, userName: decryptString(result.name) },
   });
 
   // Automated Email Notification
   try {
     await emailService.sendEmail({
-      to: user.email,
+      to: decryptString(result.email),
       subject: "Your Account has been Activated - WallNet-Sec",
-      text: `Hello ${user.name},\n\nYour partner account has been approved and activated. You can now login and generate API keys.\n\nBest Regards,\nWallNet-Sec Team`,
-      html: `<h3>Hello ${user.name},</h3><p>Your partner account has been <strong>approved and activated</strong>.</p><p>You can now login to your dashboard and generate API keys to start using our services.</p><br/><p>Best Regards,<br/>WallNet-Sec Team</p>`
+      text: `Hello ${decryptString(result.name)},\n\nYour partner account has been approved and activated. You can now login and generate API keys.\n\nBest Regards,\nWallNet-Sec Team`,
+      html: `<h3>Hello ${decryptString(result.name)},</h3><p>Your partner account has been <strong>approved and activated</strong>.</p><p>You can now login to your dashboard and generate API keys to start using our services.</p><br/><p>Best Regards,<br/>WallNet-Sec Team</p>`
     });
   } catch (err) {
     console.error("Failed to send activation email:", err);
@@ -374,9 +381,10 @@ const activatePartner = asyncHandler(async (req, res) => {
 
   res.json({
     message: "Partner activated successfully",
-    user: { id: user._id, name: user.name, status: user.status },
+    user: { id: result._id, name: decryptString(result.name), status: result.status },
   });
 });
+
 
 // ─── Deactivate Partner ─────────────────────────────────────────────────────
 
@@ -387,15 +395,22 @@ const deactivatePartner = asyncHandler(async (req, res) => {
   });
   const reason = assertOptionalString("reason", req.body.reason, { max: 500 }) || "Deactivated by admin";
 
-  const user = await User.findById(userId);
-  if (!user) {
+  // Use findByIdAndUpdate to avoid double-encrypting name/email fields
+  const result = await User.findByIdAndUpdate(
+    userId,
+    {
+      $set: {
+        status: "inactive",
+        deactivatedAt: new Date(),
+        deactivatedReason: reason,
+      },
+    },
+    { new: true, runValidators: false }
+  );
+
+  if (!result) {
     throw new HttpError(404, "User not found");
   }
-
-  user.status = "inactive";
-  user.deactivatedAt = new Date();
-  user.deactivatedReason = reason;
-  await user.save();
 
   // Deactivate ALL their API keys
   await PartnerKey.updateMany(
@@ -407,16 +422,16 @@ const deactivatePartner = asyncHandler(async (req, res) => {
     action: "SUPER_ADMIN_DEACTIVATE_PARTNER",
     userId: "superadmin",
     req,
-    metadata: { targetUserId: userId, userName: user.name, reason },
+    metadata: { targetUserId: userId, userName: decryptString(result.name), reason },
   });
 
   // Automated Email Notification
   try {
     await emailService.sendEmail({
-      to: user.email,
+      to: decryptString(result.email),
       subject: "Account Notice: Deactivation - WallNet-Sec",
-      text: `Hello ${user.name},\n\nYour account has been deactivated for the following reason: ${reason}\n\nPlease contact support if you believe this is an error.\n\nBest Regards,\nWallNet-Sec Team`,
-      html: `<h3>Hello ${user.name},</h3><p>Your account has been <strong>deactivated</strong>.</p><p><strong>Reason:</strong> ${reason}</p><p>Please contact support if you believe this is an error.</p><br/><p>Best Regards,<br/>WallNet-Sec Team</p>`
+      text: `Hello ${decryptString(result.name)},\n\nYour account has been deactivated for the following reason: ${reason}\n\nPlease contact support if you believe this is an error.\n\nBest Regards,\nWallNet-Sec Team`,
+      html: `<h3>Hello ${decryptString(result.name)},</h3><p>Your account has been <strong>deactivated</strong>.</p><p><strong>Reason:</strong> ${reason}</p><p>Please contact support if you believe this is an error.</p><br/><p>Best Regards,<br/>WallNet-Sec Team</p>`
     });
   } catch (err) {
     console.error("Failed to send deactivation email:", err);
@@ -424,9 +439,10 @@ const deactivatePartner = asyncHandler(async (req, res) => {
 
   res.json({
     message: "Partner deactivated. They cannot login and all their API keys are disabled.",
-    user: { id: user._id, name: user.name, status: user.status },
+    user: { id: result._id, name: decryptString(result.name), status: result.status },
   });
 });
+
 
 // ─── Suspend Partner ────────────────────────────────────────────────────────
 
@@ -437,15 +453,22 @@ const suspendPartner = asyncHandler(async (req, res) => {
   });
   const reason = assertOptionalString("reason", req.body.reason, { max: 500 }) || "Suspended by admin";
 
-  const user = await User.findById(userId);
-  if (!user) {
+  // Use findByIdAndUpdate to avoid double-encrypting name/email fields
+  const result = await User.findByIdAndUpdate(
+    userId,
+    {
+      $set: {
+        status: "suspended",
+        deactivatedAt: new Date(),
+        deactivatedReason: reason,
+      },
+    },
+    { new: true, runValidators: false }
+  );
+
+  if (!result) {
     throw new HttpError(404, "User not found");
   }
-
-  user.status = "suspended";
-  user.deactivatedAt = new Date();
-  user.deactivatedReason = reason;
-  await user.save();
 
   await PartnerKey.updateMany(
     { ownerUserId: userId },
@@ -456,16 +479,16 @@ const suspendPartner = asyncHandler(async (req, res) => {
     action: "SUPER_ADMIN_SUSPEND_PARTNER",
     userId: "superadmin",
     req,
-    metadata: { targetUserId: userId, userName: user.name, reason },
+    metadata: { targetUserId: userId, userName: decryptString(result.name), reason },
   });
 
   // Automated Email Notification
   try {
     await emailService.sendEmail({
-      to: user.email,
+      to: decryptString(result.email),
       subject: "Security Alert: Account Suspended - WallNet-Sec",
-      text: `CRITICAL: Hello ${user.name},\n\nYour account has been suspended for security reasons: ${reason}\n\nAll API access has been revoked immediately.\n\nBest Regards,\nSecurity Team`,
-      html: `<h2 style="color: red;">Security Alert</h2><h3>Hello ${user.name},</h3><p>Your account has been <strong>suspended</strong> for security reasons.</p><p><strong>Reason:</strong> ${reason}</p><p>All API access has been revoked immediately. Please contact the security team if you have questions.</p><br/><p>Best Regards,<br/>Security Team</p>`
+      text: `CRITICAL: Hello ${decryptString(result.name)},\n\nYour account has been suspended for security reasons: ${reason}\n\nAll API access has been revoked immediately.\n\nBest Regards,\nSecurity Team`,
+      html: `<h2 style="color: red;">Security Alert</h2><h3>Hello ${decryptString(result.name)},</h3><p>Your account has been <strong>suspended</strong> for security reasons.</p><p><strong>Reason:</strong> ${reason}</p><p>All API access has been revoked immediately. Please contact the security team if you have questions.</p><br/><p>Best Regards,<br/>Security Team</p>`
     });
   } catch (err) {
     console.error("Failed to send suspension email:", err);
@@ -473,9 +496,10 @@ const suspendPartner = asyncHandler(async (req, res) => {
 
   res.json({
     message: "Partner suspended.",
-    user: { id: user._id, name: user.name, status: user.status },
+    user: { id: result._id, name: decryptString(result.name), status: result.status },
   });
 });
+
 
 // ─── Update Partner Account ──────────────────────────────────────────────────
 
@@ -487,7 +511,7 @@ const updatePartnerAccount = asyncHandler(async (req, res) => {
 
   const { apiLimit, status, trialStartDate, trialExpiresAt } = req.body;
 
-  const user = await User.findById(userId);
+  const user = await User.findById(userId).lean();
   if (!user) {
     throw new HttpError(404, "User not found");
   }
@@ -499,26 +523,27 @@ const updatePartnerAccount = asyncHandler(async (req, res) => {
     trialExpiresAt: user.trialExpiresAt,
   };
 
+  // Build the update object only with changed fields to avoid touching encrypted fields
+  const $set = {};
   if (apiLimit !== undefined) {
-    user.apiLimit = assertInteger("apiLimit", apiLimit, { min: 0 });
+    $set.apiLimit = assertInteger("apiLimit", apiLimit, { min: 0 });
   }
-
   if (status !== undefined) {
-    user.status = assertRequiredString("status", status, {
-      min: 1,
-      max: 20,
-    });
+    $set.status = assertRequiredString("status", status, { min: 1, max: 20 });
   }
-
   if (trialStartDate !== undefined) {
-    user.trialStartDate = new Date(trialStartDate);
+    $set.trialStartDate = new Date(trialStartDate);
   }
-
   if (trialExpiresAt !== undefined) {
-    user.trialExpiresAt = new Date(trialExpiresAt);
+    $set.trialExpiresAt = new Date(trialExpiresAt);
   }
 
-  await user.save();
+  // Use findByIdAndUpdate to avoid re-running encryption setters / emailHash pre-validate hook
+  const updated = await User.findByIdAndUpdate(
+    userId,
+    { $set },
+    { new: true, runValidators: false }
+  );
 
   await logEvent({
     action: "ADMIN_PARTNER_ACCOUNT_UPDATE",
@@ -527,10 +552,10 @@ const updatePartnerAccount = asyncHandler(async (req, res) => {
     metadata: {
       old: oldData,
       new: {
-        apiLimit: user.apiLimit,
-        status: user.status,
-        trialStartDate: user.trialStartDate,
-        trialExpiresAt: user.trialExpiresAt,
+        apiLimit: updated.apiLimit,
+        status: updated.status,
+        trialStartDate: updated.trialStartDate,
+        trialExpiresAt: updated.trialExpiresAt,
       },
       updatedBy: req.admin?.email,
     },
@@ -539,14 +564,15 @@ const updatePartnerAccount = asyncHandler(async (req, res) => {
   res.json({
     message: "Partner account updated successfully",
     user: {
-      id: user._id,
-      apiLimit: user.apiLimit,
-      status: user.status,
-      trialStartDate: user.trialStartDate,
-      trialExpiresAt: user.trialExpiresAt,
+      id: updated._id,
+      apiLimit: updated.apiLimit,
+      status: updated.status,
+      trialStartDate: updated.trialStartDate,
+      trialExpiresAt: updated.trialExpiresAt,
     },
   });
 });
+
 
 /**
  * ─── Send Email to Partner ──────────────────────────────────────────────────

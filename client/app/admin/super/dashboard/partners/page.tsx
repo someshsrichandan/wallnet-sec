@@ -20,7 +20,10 @@ import {
   Paperclip,
   X,
   FileText,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Key,
+  CheckCheck,
+  Loader2,
 } from "lucide-react";
 import { 
   BarChart, 
@@ -116,6 +119,14 @@ export default function PartnersManagementPage() {
   const [emailAttachments, setEmailAttachments] = useState<any[]>([]);
   const [detailsRange, setDetailsRange] = useState("30d");
 
+  // ── Pending Key Approval State ───────────────────────────────────────────
+  const [pendingKeyPartner, setPendingKeyPartner] = useState<Partner | null>(null);
+  const [pendingKeys, setPendingKeys] = useState<any[]>([]);
+  const [loadingPendingKeys, setLoadingPendingKeys] = useState(false);
+  const [approvingKeyId, setApprovingKeyId] = useState<string | null>(null);
+  const [approvingAll, setApprovingAll] = useState(false);
+
+
   const fetchPartners = async () => {
     try {
       setLoading(true);
@@ -135,6 +146,70 @@ export default function PartnersManagementPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openPendingKeysModal = async (partner: Partner) => {
+    setPendingKeyPartner(partner);
+    setPendingKeys([]);
+    setLoadingPendingKeys(true);
+    try {
+      const token = localStorage.getItem("superAdminToken");
+      const result: any = await requestJson(
+        `/api/super-admin/partners/${partner.id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const pending = (result.apiKeys || []).filter(
+        (k: any) => k.approvalStatus === "pending" || (!k.active && k.approvalStatus !== "rejected")
+      );
+      setPendingKeys(pending);
+    } catch {
+      toast.error("Failed to load pending keys");
+      setPendingKeyPartner(null);
+    } finally {
+      setLoadingPendingKeys(false);
+    }
+  };
+
+  const approveKey = async (keyId: string) => {
+    setApprovingKeyId(keyId);
+    try {
+      const token = localStorage.getItem("superAdminToken");
+      await requestJson(`/api/super-admin/api-keys/${keyId}/approve`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setPendingKeys((prev) => prev.filter((k) => (k.id || k._id) !== keyId));
+      toast.success("API key approved and activated");
+      fetchPartners();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to approve key");
+    } finally {
+      setApprovingKeyId(null);
+    }
+  };
+
+  const approveAllPendingKeys = async () => {
+    if (!pendingKeys.length) return;
+    setApprovingAll(true);
+    const token = localStorage.getItem("superAdminToken");
+    let successCount = 0;
+    for (const key of [...pendingKeys]) {
+      const id = key.id || key._id;
+      try {
+        await requestJson(`/api/super-admin/api-keys/${id}/approve`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        successCount++;
+        setPendingKeys((prev) => prev.filter((k) => (k.id || k._id) !== id));
+      } catch {
+        // continue on individual failure
+      }
+    }
+    toast.success(`${successCount} key(s) approved and activated`);
+    fetchPartners();
+    setApprovingAll(false);
+    setPendingKeyPartner(null);
   };
 
   const fetchPartnerDetails = async (partner: Partner, rangeToUse?: string) => {
@@ -346,9 +421,18 @@ export default function PartnersManagementPage() {
                         <div className="flex items-center gap-2">
                           <span className="font-semibold">{partner.activeApiKeyCount} active</span>
                           {partner.pendingApiKeyCount > 0 && (
-                            <Badge variant="outline" className="text-[10px] border-amber-200 bg-amber-50 text-amber-700">
-                              {partner.pendingApiKeyCount} pending
-                            </Badge>
+                            <button
+                              onClick={() => openPendingKeysModal(partner)}
+                              title="Click to approve pending keys"
+                            >
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-amber-300 bg-amber-50 text-amber-700 cursor-pointer hover:bg-amber-100 transition-colors gap-1"
+                              >
+                                <Key className="w-2.5 h-2.5" />
+                                {partner.pendingApiKeyCount} pending
+                              </Badge>
+                            </button>
                           )}
                         </div>
                         <div className="text-[10px] text-muted-foreground mt-0.5">
@@ -790,6 +874,113 @@ export default function PartnersManagementPage() {
           
           <DialogFooter>
             <Button onClick={closeModal}>Close Details</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Pending API Keys Approval Modal ─────────────────────────────── */}
+      <Dialog
+        open={!!pendingKeyPartner}
+        onOpenChange={(open) => { if (!open) { setPendingKeyPartner(null); setPendingKeys([]); } }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5 text-amber-500" />
+              Approve Pending API Keys
+            </DialogTitle>
+            <DialogDescription>
+              Partner: <span className="font-semibold">{pendingKeyPartner?.name}</span>
+              &nbsp;·&nbsp;Approving will activate the key immediately.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3 space-y-3">
+            {loadingPendingKeys ? (
+              <div className="py-8 flex flex-col items-center justify-center text-muted-foreground">
+                <Loader2 className="h-7 w-7 animate-spin text-amber-500 mb-2" />
+                Loading pending keys…
+              </div>
+            ) : pendingKeys.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground text-sm">
+                <CheckCheck className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                No pending keys found — all keys are already active.
+              </div>
+            ) : (
+              <>
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/60">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Key ID</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Partner ID</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
+                        <th className="px-3 py-2 text-right font-medium text-muted-foreground">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingKeys.map((key) => {
+                        const id = key.id || key._id;
+                        const isApproving = approvingKeyId === id;
+                        return (
+                          <tr key={id} className="border-t border-border hover:bg-muted/20">
+                            <td className="px-3 py-2 font-mono text-[10px] max-w-[120px] truncate">
+                              {(key.keyId ?? "—").slice(0, 22)}…
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">{key.partnerId}</td>
+                            <td className="px-3 py-2">
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] h-4 border-amber-300 bg-amber-50 text-amber-700"
+                              >
+                                {key.approvalStatus ?? "inactive"}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <Button
+                                size="sm"
+                                className="h-6 text-[10px] bg-emerald-600 hover:bg-emerald-700 px-2"
+                                onClick={() => approveKey(id)}
+                                disabled={isApproving || approvingAll}
+                              >
+                                {isApproving ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <><CheckCircle2 className="h-3 w-3 mr-1" />Approve</>
+                                )}
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {pendingKeys.length > 1 && (
+                  <Button
+                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                    onClick={approveAllPendingKeys}
+                    disabled={approvingAll}
+                  >
+                    {approvingAll ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Approving all…</>
+                    ) : (
+                      <><CheckCheck className="h-4 w-4 mr-2" />Approve All {pendingKeys.length} Keys</>
+                    )}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setPendingKeyPartner(null); setPendingKeys([]); }}
+            >
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
